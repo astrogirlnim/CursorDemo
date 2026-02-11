@@ -1,0 +1,51 @@
+---
+description: Tailwind CSS with React best practices for UI/UX
+globs: ["frontend/src/**/*.tsx", "frontend/src/**/*.jsx"]
+alwaysApply: false
+source: https://github.com/PatrickJS/awesome-cursorrules/tree/main/rules/tailwind-react-firebase-cursorrules-prompt-file
+adapted: true
+---
+
+# Tailwind + React UI/UX Best Practices
+
+## Mobile-First Design
+- Always design and implement for mobile screens first, then scale up to larger screens
+- Use Tailwind's responsive prefixes (sm:, md:, lg:, xl:) to adjust layouts for different screen sizes
+
+## Consistent Design System
+- Create a design system with consistent colors, typography, spacing, and component styles
+- Utilize Tailwind's configuration file (tailwind.config.js) to define your custom design tokens
+
+## Performance Optimization
+- Use React.lazy() and Suspense for code-splitting and lazy-loading components
+- Implement virtualization for long lists using libraries like react-window
+- Optimize images and assets
+
+## Responsive Typography
+- Use Tailwind's text utilities with responsive prefixes to adjust font sizes across different screens
+- Consider using a fluid typography system for seamless scaling
+
+## Accessibility
+- Ensure proper color contrast ratios using Tailwind's text-* and bg-* classes
+- Use semantic HTML elements and ARIA attributes where necessary
+- Implement keyboard navigation support
+
+## Touch-Friendly UI
+- Make interactive elements (buttons, links) at least 44x44 pixels for easy tapping
+- Implement touch gestures for common actions where appropriate
+
+## Error Handling and Feedback
+- Implement proper error boundaries in React
+- Provide clear feedback for user actions (loading states, success/error messages)
+
+## Animation and Transitions
+- Use subtle animations to enhance UX (e.g., page transitions, micro-interactions)
+- Utilize Tailwind's transition utilities or consider libraries like Framer Motion
+
+## Form Handling
+- Use libraries like react-hook-form for efficient form management
+- Implement proper form validation with clear error messages
+
+## Code Organization
+- Follow a consistent folder structure (e.g., components, hooks, pages, services)
+- Use custom hooks to encapsulate and reuse logic

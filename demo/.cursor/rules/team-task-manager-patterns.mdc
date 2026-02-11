@@ -1,0 +1,151 @@
+---
+description: Team Task Manager specific patterns for PostgreSQL and team collaboration
+globs: ["**/*.ts", "**/*.tsx"]
+alwaysApply: true
+---
+
+# Team Task Manager Custom Patterns
+
+This is a custom rule for our specific Team Task Manager application requirements.
+
+## Database Patterns (PostgreSQL)
+
+### Always Use Prepared Statements
+```typescript
+// Good - prevents SQL injection
+const result = await pool.query(
+  'SELECT * FROM tasks WHERE team_id = $1 AND assignee_id = $2',
+  [teamId, assigneeId]
+);
+
+// Bad - SQL injection risk
+const result = await pool.query(
+  `SELECT * FROM tasks WHERE team_id = ${teamId}`
+);
+```
+
+### Model Layer Structure
+Each model should export:
+- Interface defining the data structure
+- CRUD functions using prepared statements
+- Query functions with proper error handling
+
+## Team Collaboration Patterns
+
+### Team-Based Access Control
+- Always verify user is a member of the team before showing data
+- Filter tasks by team_id in all queries
+- Implement team ownership and membership checks
+
+### User Context
+- Attach user information to request object via middleware
+- Use user.id from JWT for all operations
+- Never trust client-sent user IDs
+
+## API Response Format
+
+### Success Response
+```typescript
+res.json({
+  success: true,
+  data: result,
+  message: 'Optional success message'
+});
+```
+
+### Error Response
+```typescript
+res.status(statusCode).json({
+  success: false,
+  error: 'Human-readable error message',
+  details: { field: 'Specific error' } // optional
+});
+```
+
+## Security Requirements
+
+### Authentication
+- All task and team routes require authentication
+- Use JWT tokens in Authorization header
+- Verify token on every protected request
+
+### Authorization
+- Verify team membership before showing team data
+- Only team owners can delete teams
+- Only task creators or assignees can modify tasks
+
+### Data Validation
+- Validate all inputs before database operations
+- Check required fields (title, team_id, etc.)
+- Sanitize user input to prevent XSS
+
+## Component Patterns
+
+### State Management
+- Use React Context for auth and team state
+- Use local state for component-specific data
+- Custom hooks for reusable data fetching logic
+
+### Loading States
+Always handle three states:
+1. Loading (show skeleton or spinner)
+2. Error (show error message with retry)
+3. Success (show data)
+
+### Form Validation
+- Client-side validation for UX
+- Server-side validation for security
+- Show field-level error messages
+
+## Code Organization
+
+### Backend Structure
+```
+backend/src/
+├── controllers/    # HTTP handlers
+├── models/         # Database queries
+├── services/       # Business logic
+├── middleware/     # Auth, validation
+├── routes/         # Route definitions
+└── config/         # Configuration
+```
+
+### Frontend Structure
+```
+frontend/src/
+├── components/     # Reusable UI
+├── pages/          # Route pages
+├── contexts/       # Global state
+├── hooks/          # Custom hooks
+├── services/       # API clients
+└── types/          # TypeScript types
+```
+
+## Testing Requirements
+
+### Backend Tests
+- Unit tests for models and services
+- Integration tests for API endpoints
+- Mock database for unit tests
+- Real database for integration tests
+
+### Frontend Tests
+- Unit tests for components
+- Unit tests for hooks
+- Integration tests for user flows
+- Mock API calls in tests
+
+## Environment Variables
+
+Required environment variables:
+- `DATABASE_URL` - PostgreSQL connection string
+- `JWT_SECRET` - Secret for signing JWTs
+- `PORT` - Server port (default: 3000)
+- `FRONTEND_URL` - Frontend URL for CORS
+
+## Error Logging
+
+- Log all errors with context
+- Include timestamp, user ID, and operation
+- Never log sensitive data (passwords, tokens)
+- Use structured logging format

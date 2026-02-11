@@ -1,0 +1,52 @@
+---
+description: Node.js with Express.js and JWT authentication patterns
+globs: ["backend/src/**/*.ts", "backend/src/**/*.js"]
+alwaysApply: false
+source: https://github.com/PatrickJS/awesome-cursorrules/tree/main/rules/nodejs-mongodb-jwt-express-react-cursorrules-promp
+adapted: true
+---
+
+# Node.js + Express + JWT Backend Standards
+
+## Tech Stack
+- Backend: Node.js with Express.js 
+- Authentication: JSON Web Tokens (JWT) 
+- Version Control: Git 
+
+## Strategy
+
+### Strategic Planning with Pseudocode
+- Begin each feature with detailed pseudocode
+- Provide pseudocode for complex processes before coding
+- Outline API endpoints and business logic clearly
+
+## Code Quality
+- Ensure secure, efficient code following RESTful API best practices
+- Implement proper error handling and input validation
+- Use middleware for cross-cutting concerns (auth, validation, logging)
+
+## API Design
+- Follow RESTful conventions
+- Use proper HTTP methods (GET, POST, PUT, DELETE)
+- Return consistent response format
+- Implement proper status codes
+
+## Authentication Flow
+- Use JWT for stateless authentication
+- Implement token generation and verification
+- Protect routes with authentication middleware
+- Handle token expiry and refresh
+
+## Error Handling
+- Implement centralized error handling
+- Return structured error responses
+- Log errors with appropriate context
+- Never expose sensitive information in errors
+
+## Security Best Practices
+- Validate all user inputs
+- Use prepared statements / parameterized queries
+- Implement rate limiting
+- Use HTTPS in production
+- Hash passwords with bcrypt
+- Sanitize user data
