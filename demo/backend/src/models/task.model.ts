@@ -51,6 +51,18 @@ export interface UpdateTaskDTO {
 }
 
 /**
+ * Task filter options for flexible querying
+ */
+export interface TaskFilterOptions {
+  team_id?: number | 'unassigned';
+  status?: 'todo' | 'in_progress' | 'done';
+  priority?: 'low' | 'medium' | 'high';
+  user_id?: number; // For unassigned tasks filter
+  limit?: number;
+  offset?: number;
+}
+
+/**
  * Task Model - handles all database operations for tasks
  */
 export class TaskModel {
@@ -431,6 +443,91 @@ export class TaskModel {
       }
     } catch (error) {
       console.error('[TaskModel] Error fetching unassigned tasks:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * Find tasks with flexible filtering options
+   * Supports combining team_id, status, and priority filters
+   * @param filters - Filter options (team_id, status, priority, user_id, limit, offset)
+   * @returns Paginated tasks and total count
+   */
+  static async findWithFilters(filters: TaskFilterOptions): Promise<PaginatedTasks> {
+    console.log('[TaskModel] Finding tasks with filters:', filters);
+    
+    try {
+      // Build WHERE clause dynamically based on provided filters
+      const whereClauses: string[] = [];
+      const queryParams: any[] = [];
+      let paramCount = 1;
+      
+      // Handle team_id filter (including "unassigned" special case)
+      if (filters.team_id !== undefined) {
+        if (filters.team_id === 'unassigned') {
+          // Unassigned tasks: team_id IS NULL AND belongs to user
+          whereClauses.push('team_id IS NULL');
+          if (filters.user_id) {
+            whereClauses.push(`(creator_id = $${paramCount} OR creator_id IS NULL)`);
+            queryParams.push(filters.user_id);
+            paramCount++;
+          }
+        } else {
+          // Specific team_id
+          whereClauses.push(`team_id = $${paramCount}`);
+          queryParams.push(filters.team_id);
+          paramCount++;
+        }
+      }
+      
+      // Handle status filter
+      if (filters.status) {
+        whereClauses.push(`status = $${paramCount}`);
+        queryParams.push(filters.status);
+        paramCount++;
+      }
+      
+      // Handle priority filter
+      if (filters.priority) {
+        whereClauses.push(`priority = $${paramCount}`);
+        queryParams.push(filters.priority);
+        paramCount++;
+      }
+      
+      // Combine WHERE clauses
+      const whereSQL = whereClauses.length > 0 
+        ? `WHERE ${whereClauses.join(' AND ')}`
+        : '';
+      
+      console.log('[TaskModel] Generated WHERE clause:', whereSQL);
+      console.log('[TaskModel] Query params:', queryParams);
+      
+      // Handle pagination
+      const isPaginated = filters.limit !== undefined && filters.offset !== undefined;
+      
+      if (isPaginated) {
+        // Count query
+        const countSQL = `SELECT COUNT(*) FROM tasks ${whereSQL}`;
+        const countResult = await pool.query(countSQL, queryParams);
+        const total = parseInt(countResult.rows[0].count);
+        
+        // Data query with pagination
+        const dataSQL = `SELECT * FROM tasks ${whereSQL} ORDER BY created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+        const dataParams = [...queryParams, filters.limit, filters.offset];
+        const dataResult = await pool.query(dataSQL, dataParams);
+        
+        console.log(`[TaskModel] Found ${dataResult.rows.length} of ${total} tasks with filters`);
+        return { tasks: dataResult.rows, total };
+      } else {
+        // No pagination - get all matching tasks
+        const sql = `SELECT * FROM tasks ${whereSQL} ORDER BY created_at DESC`;
+        const result = await pool.query(sql, queryParams);
+        
+        console.log(`[TaskModel] Found ${result.rows.length} tasks with filters`);
+        return { tasks: result.rows, total: result.rows.length };
+      }
+    } catch (error) {
+      console.error('[TaskModel] Error finding tasks with filters:', error);
       throw handleDatabaseError(error);
     }
   }

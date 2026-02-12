@@ -35,6 +35,7 @@ export class TaskController {
   static async getAllTasks(req: Request, res: Response): Promise<void> {
     try {
       console.log('[TaskController] GET /api/tasks - Fetching all tasks');
+      console.log('[TaskController] Query params:', req.query);
       
       // Validate and parse pagination parameters
       const { page, limit, offset } = validatePagination(
@@ -46,16 +47,22 @@ export class TaskController {
       const { status, priority, team_id } = req.query;
       const userId = req.user?.userId;
       
-      let result;
-      let endpoint = '/api/tasks';
+      // Build filter options object
+      const filters: any = {
+        limit,
+        offset,
+      };
       
-      // Filter by team_id if provided
+      // Build query string for logging
+      const queryParts: string[] = [];
+      
+      // Handle team_id filter
       if (team_id) {
-        // Handle special "unassigned" value for tasks with no team
         if (team_id === 'unassigned') {
           console.log(`[TaskController] Filtering unassigned tasks for user ${userId}`);
-          endpoint += '?team_id=unassigned';
-          result = await TaskModel.findUnassigned(userId, limit, offset);
+          filters.team_id = 'unassigned';
+          filters.user_id = userId;
+          queryParts.push('team_id=unassigned');
         } else {
           const teamIdNum = validateId(team_id, 'team_id');
           
@@ -69,23 +76,34 @@ export class TaskController {
           }
           
           console.log(`[TaskController] Filtering tasks by team_id: ${teamIdNum}`);
-          endpoint += `?team_id=${teamIdNum}`;
-          result = await TaskModel.findByTeamId(teamIdNum, limit, offset);
+          filters.team_id = teamIdNum;
+          queryParts.push(`team_id=${teamIdNum}`);
         }
-      } else if (status && typeof status === 'string') {
-        // Filter by status
-        const validatedStatus = validateTaskStatus(status);
-        endpoint += `?status=${status}`;
-        result = await TaskModel.findByStatus(validatedStatus, limit, offset);
-      } else if (priority && typeof priority === 'string') {
-        // Filter by priority
-        const validatedPriority = validateTaskPriority(priority);
-        endpoint += `?priority=${priority}`;
-        result = await TaskModel.findByPriority(validatedPriority, limit, offset);
-      } else {
-        // Get all tasks
-        result = await TaskModel.findAll(limit, offset);
       }
+      
+      // Handle status filter
+      if (status && typeof status === 'string') {
+        const validatedStatus = validateTaskStatus(status);
+        console.log(`[TaskController] Filtering tasks by status: ${validatedStatus}`);
+        filters.status = validatedStatus;
+        queryParts.push(`status=${status}`);
+      }
+      
+      // Handle priority filter
+      if (priority && typeof priority === 'string') {
+        const validatedPriority = validateTaskPriority(priority);
+        console.log(`[TaskController] Filtering tasks by priority: ${validatedPriority}`);
+        filters.priority = validatedPriority;
+        queryParts.push(`priority=${priority}`);
+      }
+      
+      // Build endpoint string for logging
+      const endpoint = '/api/tasks' + (queryParts.length > 0 ? '?' + queryParts.join('&') : '');
+      
+      console.log('[TaskController] Applying filters:', filters);
+      
+      // Use the flexible findWithFilters method to support multiple filters
+      const result = await TaskModel.findWithFilters(filters);
       
       logPaginationQuery(endpoint, page, limit, offset, result.total);
       console.log(`[TaskController] Successfully fetched ${result.tasks.length} of ${result.total} tasks`);
