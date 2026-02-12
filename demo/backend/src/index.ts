@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { ApiResponse } from './types';
 import taskRoutes from './routes/task.routes';
 import authRoutes from './routes/auth.routes';
+import teamRoutes from './routes/team.routes';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +40,9 @@ app.use('/api/auth', authRoutes);
 
 console.log('[Server] Registering task routes at /api/tasks');
 app.use('/api/tasks', taskRoutes);
+
+console.log('[Server] Registering team routes at /api/teams');
+app.use('/api/teams', teamRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Task } from '../types/task.types';
 import { TaskList } from '../components/TaskList';
 import { TaskForm } from '../components/TaskForm';
+import { TeamSelector } from '../components/TeamSelector';
 
 /**
  * TasksPage Component
@@ -73,7 +74,7 @@ export function TasksPage() {
               Team Task Manager
             </h1>
             <p className="text-gray-600">
-              Welcome back, {user?.name}! - Module 3: Authentication
+              Welcome back, {user?.name}! - Module 4: Team Collaboration
             </p>
           </div>
           
@@ -91,6 +92,9 @@ export function TasksPage() {
             </button>
           </div>
         </div>
+
+        {/* Team Selector */}
+        <TeamSelector />
 
         {/* Main content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { TaskModel, CreateTaskDTO, UpdateTaskDTO } from '../models/task.model';
+import { TeamModel } from '../models/team.model';
 import { ApiResponse } from '../types';
 
 /**
@@ -8,18 +9,56 @@ import { ApiResponse } from '../types';
 export class TaskController {
   /**
    * GET /api/tasks
-   * Get all tasks
+   * Get all tasks (optionally filtered by team_id, status, or priority)
+   * Requires authentication and team membership if team_id is provided
    */
   static async getAllTasks(req: Request, res: Response): Promise<void> {
     try {
       console.log('[TaskController] GET /api/tasks - Fetching all tasks');
       
       // Check for query parameters for filtering
-      const { status, priority } = req.query;
+      const { status, priority, team_id } = req.query;
+      const userId = req.user?.userId;
       
       let tasks;
       
-      if (status && typeof status === 'string') {
+      // Filter by team_id if provided
+      if (team_id) {
+        // Handle special "unassigned" value for tasks with no team
+        if (team_id === 'unassigned') {
+          console.log(`[TaskController] Filtering unassigned tasks for user ${userId}`);
+          tasks = await TaskModel.findUnassigned(userId);
+        } else {
+          const teamIdNum = parseInt(team_id as string);
+          
+          if (isNaN(teamIdNum)) {
+            console.log(`[TaskController] Invalid team_id filter: ${team_id}`);
+            res.status(400).json({
+              success: false,
+              message: 'Invalid team_id parameter',
+              data: null
+            } as ApiResponse);
+            return;
+          }
+          
+          // Verify user is a member of the team
+          if (userId) {
+            const isMember = await TeamModel.isMember(teamIdNum, userId);
+            if (!isMember) {
+              console.log(`[TaskController] Access denied: User ${userId} is not a member of team ${teamIdNum}`);
+              res.status(403).json({
+                success: false,
+                message: 'You do not have access to this team\'s tasks',
+                data: null
+              } as ApiResponse);
+              return;
+            }
+          }
+          
+          console.log(`[TaskController] Filtering tasks by team_id: ${teamIdNum}`);
+          tasks = await TaskModel.findByTeamId(teamIdNum);
+        }
+      } else if (status && typeof status === 'string') {
         // Filter by status
         if (!['todo', 'in_progress', 'done'].includes(status)) {
           console.log(`[TaskController] Invalid status filter: ${status}`);
@@ -118,6 +157,7 @@ export class TaskController {
   /**
    * POST /api/tasks
    * Create a new task
+   * Validates team membership if team_id is provided
    */
   static async createTask(req: Request, res: Response): Promise<void> {
     try {
@@ -125,6 +165,7 @@ export class TaskController {
       console.log('[TaskController] Request body:', req.body);
       
       const taskData: CreateTaskDTO = req.body;
+      const userId = req.user?.userId;
       
       // Validate required fields
       if (!taskData.title || taskData.title.trim() === '') {
@@ -135,6 +176,20 @@ export class TaskController {
           data: null
         } as ApiResponse);
         return;
+      }
+      
+      // Validate team membership if team_id is provided
+      if (taskData.team_id && userId) {
+        const isMember = await TeamModel.isMember(taskData.team_id, userId);
+        if (!isMember) {
+          console.log(`[TaskController] Access denied: User ${userId} is not a member of team ${taskData.team_id}`);
+          res.status(403).json({
+            success: false,
+            message: 'You must be a member of the team to create tasks',
+            data: null
+          } as ApiResponse);
+          return;
+        }
       }
       
       // Validate status if provided
@@ -157,6 +212,11 @@ export class TaskController {
           data: null
         } as ApiResponse);
         return;
+      }
+      
+      // Add creator_id from authenticated user
+      if (userId) {
+        taskData.creator_id = userId;
       }
       
       const newTask = await TaskModel.create(taskData);

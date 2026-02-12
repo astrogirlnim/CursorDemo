@@ -36,10 +36,10 @@ export class TaskService {
   }
   /**
    * Get all tasks
-   * @param filters - Optional filters for status/priority
+   * @param filters - Optional filters for status/priority/team_id
    * @returns Promise with array of tasks
    */
-  static async getAllTasks(filters?: { status?: string; priority?: string }): Promise<Task[]> {
+  static async getAllTasks(filters?: { status?: string; priority?: string; team_id?: number | string }): Promise<Task[]> {
     try {
       console.log('[TaskService] Fetching all tasks', filters ? `with filters: ${JSON.stringify(filters)}` : '');
       
@@ -47,6 +47,9 @@ export class TaskService {
       const queryParams = new URLSearchParams();
       if (filters?.status) queryParams.append('status', filters.status);
       if (filters?.priority) queryParams.append('priority', filters.priority);
+      if (filters?.team_id !== undefined) {
+        queryParams.append('team_id', filters.team_id.toString());
+      }
       const queryString = queryParams.toString();
       
       const url = `${API_BASE_URL}/api/tasks${queryString ? `?${queryString}` : ''}`;

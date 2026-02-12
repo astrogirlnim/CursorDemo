@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Task, TASK_STATUS_CONFIG, TASK_PRIORITY_CONFIG } from '../types/task.types';
 import { TaskService } from '../services/task.service';
+import { useTeam } from '../contexts/TeamContext';
 
 interface TaskListProps {
   onEdit: (task: Task) => void;
@@ -10,6 +11,7 @@ interface TaskListProps {
 /**
  * TaskList Component
  * Displays all tasks with filtering, status updates, and delete functionality
+ * Now filters tasks by current team
  */
 export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -17,27 +19,39 @@ export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const { currentTeam } = useTeam();
 
-  // Fetch tasks on mount and when filters or refreshTrigger change
+  // Fetch tasks on mount and when filters, team, or refreshTrigger change
   useEffect(() => {
     fetchTasks();
-  }, [statusFilter, priorityFilter, refreshTrigger]);
+  }, [statusFilter, priorityFilter, refreshTrigger, currentTeam]);
 
   /**
-   * Fetch tasks from API with current filters
+   * Fetch tasks from API with current filters and team
    */
   const fetchTasks = async () => {
     try {
-      console.log('[TaskList] Fetching tasks...');
+      console.log('[TaskList] Fetching tasks for team:', currentTeam?.name);
       setLoading(true);
       setError(null);
       
-      const filters: any = {};
+      // If no team selected, don't fetch tasks
+      if (!currentTeam) {
+        console.log('[TaskList] No team selected, clearing tasks');
+        setTasks([]);
+        setLoading(false);
+        return;
+      }
+      
+      // Handle special unassigned tasks (id: -1)
+      const filters: any = { 
+        team_id: currentTeam.id === -1 ? 'unassigned' : currentTeam.id 
+      };
       if (statusFilter !== 'all') filters.status = statusFilter;
       if (priorityFilter !== 'all') filters.priority = priorityFilter;
       
       const data = await TaskService.getAllTasks(filters);
-      console.log(`[TaskList] Loaded ${data.length} tasks`);
+      console.log(`[TaskList] Loaded ${data.length} tasks for team ${currentTeam.name}`);
       setTasks(data);
     } catch (err) {
       console.error('[TaskList] Error fetching tasks:', err);
@@ -104,6 +118,16 @@ export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
         >
           Try again
         </button>
+      </div>
+    );
+  }
+
+  // Show message if no team is selected
+  if (!currentTeam) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-yellow-800">
+        <p className="font-semibold text-lg mb-2">No Team Selected</p>
+        <p className="text-sm">Please select a team from the dropdown above to view and manage tasks.</p>
       </div>
     );
   }

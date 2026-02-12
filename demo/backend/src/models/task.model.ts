@@ -10,6 +10,8 @@ export interface Task {
   status: 'todo' | 'in_progress' | 'done';
   priority: 'low' | 'medium' | 'high';
   assignee_id?: number;
+  creator_id?: number;
+  team_id?: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -23,6 +25,8 @@ export interface CreateTaskDTO {
   status?: 'todo' | 'in_progress' | 'done';
   priority?: 'low' | 'medium' | 'high';
   assignee_id?: number;
+  creator_id?: number;
+  team_id?: number;
 }
 
 /**
@@ -34,6 +38,7 @@ export interface UpdateTaskDTO {
   status?: 'todo' | 'in_progress' | 'done';
   priority?: 'low' | 'medium' | 'high';
   assignee_id?: number;
+  team_id?: number;
 }
 
 /**
@@ -82,13 +87,13 @@ export class TaskModel {
   static async create(taskData: CreateTaskDTO): Promise<Task> {
     console.log('[TaskModel] Creating new task:', taskData.title);
     
-    const { title, description, status = 'todo', priority = 'medium', assignee_id } = taskData;
+    const { title, description, status = 'todo', priority = 'medium', assignee_id, creator_id, team_id } = taskData;
     
     const result = await pool.query(
-      `INSERT INTO tasks (title, description, status, priority, assignee_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO tasks (title, description, status, priority, assignee_id, creator_id, team_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [title, description, status, priority, assignee_id]
+      [title, description, status, priority, assignee_id, creator_id, team_id]
     );
     
     console.log(`[TaskModel] Created task with id: ${result.rows[0].id}`);
@@ -128,6 +133,10 @@ export class TaskModel {
     if (taskData.assignee_id !== undefined) {
       fields.push(`assignee_id = $${paramCount++}`);
       values.push(taskData.assignee_id);
+    }
+    if (taskData.team_id !== undefined) {
+      fields.push(`team_id = $${paramCount++}`);
+      values.push(taskData.team_id);
     }
 
     // Always update updated_at
@@ -213,6 +222,41 @@ export class TaskModel {
     );
     
     console.log(`[TaskModel] Found ${result.rows.length} tasks with priority ${priority}`);
+    return result.rows;
+  }
+
+  /**
+   * Get tasks by team_id
+   * @param team_id - Team ID to filter tasks
+   * @returns Array of tasks belonging to the specified team
+   */
+  static async findByTeamId(team_id: number): Promise<Task[]> {
+    console.log(`[TaskModel] Fetching tasks for team ${team_id}`);
+    
+    const result = await pool.query(
+      'SELECT * FROM tasks WHERE team_id = $1 ORDER BY created_at DESC',
+      [team_id]
+    );
+    
+    console.log(`[TaskModel] Found ${result.rows.length} tasks for team ${team_id}`);
+    return result.rows;
+  }
+
+  /**
+   * Get unassigned tasks (team_id IS NULL) for a specific user
+   * Shows tasks where creator_id matches user OR creator_id is NULL (legacy tasks)
+   * @param user_id - User ID who created the tasks
+   * @returns Array of tasks with no team assigned
+   */
+  static async findUnassigned(user_id?: number): Promise<Task[]> {
+    console.log(`[TaskModel] Fetching unassigned tasks for user ${user_id}`);
+    
+    const result = await pool.query(
+      'SELECT * FROM tasks WHERE team_id IS NULL AND (creator_id = $1 OR creator_id IS NULL) ORDER BY created_at DESC',
+      [user_id]
+    );
+    
+    console.log(`[TaskModel] Found ${result.rows.length} unassigned tasks`);
     return result.rows;
   }
 }

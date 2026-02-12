@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Task, CreateTaskDTO } from '../types/task.types';
 import { TaskService } from '../services/task.service';
+import { useTeam } from '../contexts/TeamContext';
 
 interface TaskFormProps {
   editingTask?: Task | null;
@@ -11,6 +12,7 @@ interface TaskFormProps {
 /**
  * TaskForm Component
  * Form for creating and editing tasks
+ * Now includes team_id from current team
  */
 export function TaskForm({ editingTask, onSuccess, onCancel }: TaskFormProps) {
   const [formData, setFormData] = useState<CreateTaskDTO>({
@@ -21,6 +23,7 @@ export function TaskForm({ editingTask, onSuccess, onCancel }: TaskFormProps) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { currentTeam } = useTeam();
 
   // Populate form when editing
   useEffect(() => {
@@ -63,19 +66,30 @@ export function TaskForm({ editingTask, onSuccess, onCancel }: TaskFormProps) {
       return;
     }
 
+    // Validate team is selected for new tasks
+    if (!editingTask && (!currentTeam || currentTeam.id === -1)) {
+      setError('Please select a team before creating a task. Cannot create tasks in "Unassigned Tasks".');
+      return;
+    }
+
     try {
       console.log('[TaskForm] Submitting form:', formData);
       setLoading(true);
       setError(null);
 
+      // Add team_id to formData for new tasks
+      const taskData = editingTask 
+        ? formData 
+        : { ...formData, team_id: currentTeam?.id };
+
       if (editingTask) {
         // Update existing task
         console.log(`[TaskForm] Updating task ${editingTask.id}`);
-        await TaskService.updateTask(editingTask.id, formData);
+        await TaskService.updateTask(editingTask.id, taskData);
       } else {
         // Create new task
         console.log('[TaskForm] Creating new task');
-        await TaskService.createTask(formData);
+        await TaskService.createTask(taskData);
       }
 
       console.log('[TaskForm] Operation successful');
