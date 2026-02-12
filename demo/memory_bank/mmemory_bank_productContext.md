@@ -200,18 +200,19 @@ For developers learning Cursor IDE who need hands-on experience with realistic p
 
 ## Product Roadmap Vision
 
-### Completed (Modules 1-3)
+### Completed (Modules 1-4)
 - Project scaffold with standards
 - Task CRUD operations
 - User authentication system
-
-### In Progress (Current Module)
 - Team collaboration features
 
-### Planned (Modules 5-7)
-- Test suite with coverage targets
+### In Progress (Current Module)
+- Testing infrastructure and test suite
+
+### Planned (Modules 6-7)
 - Real-time WebSocket updates
 - End-to-end testing with Playwright
+- MCP integration
 
 ### Future Enhancements (Beyond Workshop)
 - Task comments and discussions

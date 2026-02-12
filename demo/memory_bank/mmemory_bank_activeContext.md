@@ -2,12 +2,72 @@
 
 ## Current Status
 
-**Date:** February 11, 2026  
-**Current Module:** Module 3 Complete, Moving to Module 4  
-**Overall Progress:** 42% (3 of 7 modules complete)  
+**Date:** February 12, 2026  
+**Current Module:** Module 4 Complete, Ready for Module 5  
+**Overall Progress:** 57% (4 of 7 modules complete)  
 **Git Status:** Clean working tree, all changes committed
 
 ## Recently Completed Work
+
+### Module 4: Team Collaboration Features (COMPLETED)
+**Completed:** February 12, 2026
+
+**Backend Implementation:**
+- Created 3 database migrations: teams, team_members, team_id column in tasks
+- TeamModel with complete CRUD operations and membership checks
+- TeamController with 6 REST endpoints for team management
+- Updated TaskModel to support team_id filtering and unassigned tasks
+- Updated TaskController with team membership verification
+- Transaction-based team creation to ensure owner is added as member
+- Special handling for unassigned tasks (backwards compatibility)
+
+**Frontend Implementation:**
+- TeamContext for global team state management
+- TeamSelector dropdown component with create team functionality
+- Updated TaskList to filter by selected team
+- Updated TaskForm to include team_id when creating tasks
+- Integrated TeamProvider in application structure
+- Empty state messages for no team selection
+- Unassigned Tasks option for legacy tasks
+
+**Database Changes:**
+- teams table: id, name, owner_id, created_at, updated_at
+- team_members table: id, team_id, user_id, role, joined_at with UNIQUE constraint
+- tasks table: added team_id, creator_id columns with foreign keys
+- Indexes on team_id, owner_id, and composite team_members index
+- Triggers for automatic updated_at timestamp updates
+
+**Backwards Compatibility:**
+- Unassigned Tasks pseudo-team shows tasks with team_id IS NULL
+- Legacy tasks with creator_id IS NULL are visible to all users
+- New tasks must be assigned to a proper team
+- Prevents creation of new unassigned tasks
+
+**Files Created:**
+- backend/src/migrations/003_create_teams_table.sql
+- backend/src/migrations/004_create_team_members_table.sql
+- backend/src/migrations/005_add_team_to_tasks.sql
+- backend/src/models/team.model.ts
+- backend/src/controllers/team.controller.ts
+- backend/src/routes/team.routes.ts
+- frontend/src/types/team.types.ts
+- frontend/src/services/team.service.ts
+- frontend/src/contexts/TeamContext.tsx
+- frontend/src/components/TeamSelector.tsx
+
+**Files Modified:**
+- backend/src/models/task.model.ts (added team support)
+- backend/src/controllers/task.controller.ts (team filtering)
+- backend/src/index.ts (registered team routes)
+- backend/src/migrations/002_create_users_table.sql (idempotent triggers)
+- frontend/src/main.tsx (TeamProvider wrapper)
+- frontend/src/pages/TasksPage.tsx (TeamSelector component)
+- frontend/src/components/TaskList.tsx (team filtering)
+- frontend/src/components/TaskForm.tsx (team_id inclusion)
+
+**Git Commits:**
+- "Implement team collaboration with member-based access control" (commit a43d64e)
+- "Fix unassigned tasks query to show legacy tasks with NULL creator_id" (commit 968dfde)
 
 ### Module 3: Authentication System (COMPLETED)
 **Completed:** February 11, 2026
@@ -88,35 +148,33 @@
 - "Generate project scaffold following SCAFFOLD_PRD.md" (commit a2c5e12)
 - "Add Module 2 PRD for CRUD operations" (commit 63950e4)
 
-## Current Focus: Module 4 Preparation
+## Current Focus: Module 5 Preparation
 
-### Module 4: Team Collaboration Features
+### Module 5: Deploy Subagents (Testing)
 **Status:** Not Started  
 **Target:** Next module to implement
 
 **Planned Features:**
-1. Teams table and model
-2. Team members table and model
-3. Team creation endpoint
-4. Team listing endpoint
-5. Member invitation endpoint
-6. Team-based task filtering
-7. Team access control
-8. Frontend team management UI
+1. Backend unit tests for models and services
+2. Backend integration tests for API endpoints
+3. Frontend component tests
+4. Frontend hook tests
+5. Test coverage reports
+6. Achieve 80%+ backend coverage, 75%+ frontend coverage
 
 **Key Requirements:**
-- Team ownership and membership
-- Team-based access control for tasks
-- Only team members can view team tasks
-- Only team owner can delete team
-- Members can be added/removed from teams
+- Jest + Supertest for backend testing
+- Jest + React Testing Library for frontend
+- Mock database for unit tests
+- Mock API calls for frontend tests
+- Test team access control thoroughly
 
-**Database Changes Needed:**
-- Create teams table
-- Create team_members junction table
-- Add team_id to tasks table
-- Update task queries to filter by team
-- Add team membership checks
+**Testing Focus:**
+- Team membership authorization
+- Task filtering by team
+- Unassigned tasks handling
+- User authentication flows
+- CRUD operations for all entities
 
 ## Known Issues
 
@@ -140,50 +198,50 @@ None currently
 
 ## Recent Decisions
 
-### Decision: Use bcrypt for Password Hashing
-**Date:** February 11, 2026  
-**Rationale:** Industry standard, battle-tested, appropriate work factor  
-**Alternative Considered:** argon2 (more secure but less widely supported)  
-**Outcome:** 10 rounds of bcrypt, secure enough for workshop project
+### Decision: Unassigned Tasks for Backwards Compatibility
+**Date:** February 12, 2026  
+**Rationale:** Preserve legacy tasks without data migration, user-friendly approach  
+**Alternative Considered:** Data migration to assign tasks to teams automatically  
+**Outcome:** Special "Unassigned Tasks" pseudo-team shows NULL team_id tasks, prevents future orphaned tasks
 
-### Decision: Store JWT in localStorage
-**Date:** February 11, 2026  
-**Rationale:** Simple implementation, works for SPA  
-**Alternative Considered:** httpOnly cookies (more secure)  
-**Outcome:** Good for demo, note in documentation about production alternatives
+### Decision: Use Transactions for Team Creation
+**Date:** February 12, 2026  
+**Rationale:** Ensure team and owner membership are created atomically  
+**Alternative Considered:** Separate queries (risky if second fails)  
+**Outcome:** Transaction ensures data consistency, auto-rollback on failure
 
-### Decision: Use React Context for Auth State
-**Date:** February 11, 2026  
-**Rationale:** Built-in React feature, sufficient for this scale  
-**Alternative Considered:** Redux, Zustand  
-**Outcome:** Clean implementation, easy to understand
+### Decision: Owner vs Member Roles Only
+**Date:** February 12, 2026  
+**Rationale:** Simplicity for MVP, clear permission model  
+**Alternative Considered:** Complex role hierarchy (viewer, editor, admin)  
+**Outcome:** Owner can manage members and delete team, members can create tasks
 
-### Decision: Separate Auth Service Layer
-**Date:** February 11, 2026  
-**Rationale:** Separate business logic from HTTP handling  
-**Alternative Considered:** Put logic directly in controller  
-**Outcome:** Better testability, cleaner code
+### Decision: Team Selector with Auto-Selection
+**Date:** February 12, 2026  
+**Rationale:** Reduces friction, persists user preference  
+**Alternative Considered:** Require manual selection every time  
+**Outcome:** Auto-selects first team on load, persists choice in localStorage
 
 ## Active Blockers
 
-None currently. Ready to proceed with Module 4.
+None currently. Ready to proceed with Module 5.
 
 ## Upcoming Work
 
-### Immediate Next Steps (Module 4)
-1. Create team database schema and migration
-2. Implement team model with CRUD operations
-3. Create team controller and routes
-4. Implement team member model
-5. Add team membership checks to task queries
-6. Create frontend team management components
-7. Update task components to show team context
-8. Test team-based access control
+### Immediate Next Steps (Module 5)
+1. Configure Jest and Supertest for backend
+2. Create test utilities and mocks
+3. Write unit tests for models (TaskModel, UserModel, TeamModel)
+4. Write integration tests for controllers
+5. Configure Jest and React Testing Library for frontend
+6. Write component tests (TaskList, TaskForm, TeamSelector)
+7. Write hook tests (useAuth, useTeam)
+8. Achieve 80%+ backend, 75%+ frontend coverage
 
-### Short Term (After Module 4)
-1. Module 5: Implement test suite
-2. Module 5: Achieve test coverage targets
-3. Module 5: Deploy testing subagent
+### Short Term (After Module 5)
+1. Module 6: Implement WebSocket server
+2. Module 6: Add real-time task updates
+3. Module 6: Index external documentation
 
 ### Medium Term (Modules 6-7)
 1. Module 6: Implement WebSocket real-time updates
@@ -195,54 +253,55 @@ None currently. Ready to proceed with Module 4.
 
 ### Development Servers
 **Backend:**
-- Status: Not currently running
+- Status: Running
 - Port: 3000
 - Health: http://localhost:3000/health
-- Last verified: February 11, 2026
+- Last verified: February 12, 2026
 
 **Frontend:**
-- Status: Not currently running
+- Status: Running
 - Port: 5173
 - URL: http://localhost:5173
-- Last verified: February 11, 2026
+- Last verified: February 12, 2026
 
 ### Database
 **PostgreSQL:**
 - Database: taskmanager
 - Status: Available
-- Tables: users (2 migrations applied), tasks
-- Last migration: 002_create_users_table.sql
-- Sample data: Present in tasks table
+- Tables: users, tasks, teams, team_members (5 migrations applied)
+- Last migration: 005_add_team_to_tasks.sql
+- Sample data: 4 legacy tasks, 1 team task, 1 team with 2 members
 
 ## Recent Learnings
 
 ### What Worked Well
-1. Cursor Skills for complex multi-file authentication implementation
-2. Progressive module approach keeps complexity manageable
-3. Extensive logging helps debugging significantly
-4. TypeScript catches errors early in development
-5. Prepared statements prevent SQL injection naturally
+1. Transaction-based operations ensure data consistency (team + member creation)
+2. Special pseudo-team for unassigned tasks maintains backwards compatibility
+3. TeamContext with auto-selection provides excellent UX
+4. Prepared statements with NULL handling prevent SQL errors
+5. Extensive logging at every layer simplifies debugging
+6. Model-Controller pattern scales well for new entities
 
 ### What Could Be Improved
-1. Could add more comprehensive input validation
-2. Error handling could be more granular
-3. Frontend loading states could be more polished
-4. Documentation could be generated automatically
+1. Should have planned for NULL values in schema from start
+2. Could add migration rollback support for safer iterations
+3. Frontend could benefit from optimistic updates
+4. Should add database constraints validation tests
 
 ### Patterns to Maintain
-1. Always use prepared statements for database queries
-2. Log every significant operation with context
-3. Handle loading, error, and success states in components
-4. Validate inputs on both client and server
-5. Keep business logic in service layer
-6. Use TypeScript strict mode
+1. Use transactions for multi-step database operations
+2. Always handle NULL values explicitly in queries
+3. Create pseudo-entities for special cases (Unassigned Tasks)
+4. Log at Model, Controller, and Service layers
+5. Verify permissions before showing data
+6. Auto-select sensible defaults for better UX
 
 ### Patterns to Avoid
-1. Don't concatenate SQL queries (SQL injection risk)
-2. Don't trust client-sent user IDs (security issue)
-3. Don't skip server-side validation (client can be bypassed)
-4. Don't return raw database errors to client (information leak)
-5. Don't put business logic in controllers (hard to test)
+1. Don't forget to handle backwards compatibility for schema changes
+2. Don't assume foreign keys exist (check with IF EXISTS)
+3. Don't allow orphaned data creation in new features
+4. Don't skip transaction boundaries for dependent operations
+5. Don't hardcode team IDs (use special values like -1 for pseudo-teams)
 
 ## Workspace Configuration
 
@@ -265,8 +324,8 @@ None currently. Ready to proceed with Module 4.
 ### Git Configuration
 **Branch:** main
 **Remote:** Not specified in context
-**Last Commit:** "Implement JWT authentication frontend" (0a6d13d)
-**Untracked Files:** docs/PRD_scaffold.md (will commit with next module)
+**Last Commit:** "Fix unassigned tasks query to show legacy tasks with NULL creator_id" (968dfde)
+**Working Directory:** Clean
 
 ## Team Context
 
@@ -277,31 +336,31 @@ None currently. Ready to proceed with Module 4.
 
 ## Current Questions/Uncertainties
 
-1. Should Module 4 implement role-based permissions (owner/member/viewer)?
-   - Leaning toward: Just owner vs member for simplicity
+1. Should Module 5 tests cover all edge cases or focus on happy paths?
+   - Leaning toward: Focus on critical security paths (auth, team access control)
    
-2. Should teams have invite codes or direct email invites?
-   - Leaning toward: Direct user_id assignment for MVP
+2. Should we add pagination in Module 5 or defer to later?
+   - Leaning toward: Add pagination during test implementation
    
-3. Should tasks require team assignment or allow personal tasks?
-   - Leaning toward: Require team assignment for clear access control
+3. How to structure test fixtures for teams and members?
+   - Leaning toward: Separate fixture files per entity type
 
 4. How to handle team membership in real-time updates (Module 6)?
    - Decision deferred until Module 6
 
 ## Success Metrics for Next Module
 
-### Module 4 Success Criteria
-- [ ] Teams table created with migration
-- [ ] Team members table created
-- [ ] Team CRUD endpoints working
-- [ ] Team membership endpoints working
-- [ ] Task queries filtered by team membership
-- [ ] Frontend team management UI complete
-- [ ] Team-based access control verified
-- [ ] All operations logged
-- [ ] No TypeScript errors
-- [ ] Git commit with clear message
+### Module 5 Success Criteria
+- [ ] Jest configured for backend and frontend
+- [ ] Model unit tests achieve 80%+ coverage
+- [ ] Controller integration tests complete
+- [ ] Component tests achieve 75%+ coverage
+- [ ] Hook tests for useAuth and useTeam
+- [ ] Mock database and API properly
+- [ ] All critical security paths tested
+- [ ] Test coverage reports generated
+- [ ] No regressions introduced
+- [ ] Git commit with test suite
 
 ## Notes for Future Sessions
 
@@ -309,10 +368,10 @@ None currently. Ready to proceed with Module 4.
 2. Check database is running before starting backend
 3. Review recent commits to understand context
 4. Read this file first to get current status
-5. Module 4 PRD will need to be referenced from docs/
-6. Consider creating Module 4 PRD before implementation
-7. Use Cursor Composer for multi-file generation
-8. Test team access control thoroughly (security-critical)
+5. Module 5 will require separate test database (taskmanager_test)
+6. Use Testing Subagent for comprehensive test generation
+7. Focus tests on security-critical paths (auth, team access)
+8. Team collaboration is now fully functional with backwards compatibility
 
 ## Context for AI Assistant
 

@@ -236,7 +236,7 @@ export default {
 
 ## Database Schema
 
-### Current Schema (Module 3 Complete)
+### Current Schema (Module 4 Complete)
 
 **users table:**
 ```sql
@@ -245,8 +245,13 @@ CREATE TABLE users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,  -- bcrypt hashed
   name VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TRIGGER update_users_updated_at 
+  BEFORE UPDATE ON users 
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 
 **tasks table:**
@@ -261,6 +266,7 @@ CREATE TABLE tasks (
     CHECK (priority IN ('low', 'medium', 'high')),
   assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   creator_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
   due_date TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -268,9 +274,8 @@ CREATE TABLE tasks (
 
 CREATE INDEX idx_tasks_created_at ON tasks(created_at);
 CREATE INDEX idx_tasks_status ON tasks(status);
+CREATE INDEX idx_tasks_team_id ON tasks(team_id);
 ```
-
-### Planned Schema (Module 4)
 
 **teams table:**
 ```sql
@@ -278,8 +283,15 @@ CREATE TABLE teams (
   id SERIAL PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE INDEX idx_teams_owner_id ON teams(owner_id);
+
+CREATE TRIGGER update_teams_updated_at 
+  BEFORE UPDATE ON teams 
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 
 **team_members table:**
@@ -288,15 +300,13 @@ CREATE TABLE team_members (
   id SERIAL PRIMARY KEY,
   team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(50) DEFAULT 'member',
   joined_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(team_id, user_id)
 );
-```
 
-**tasks table updates:**
-```sql
-ALTER TABLE tasks ADD COLUMN team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE;
-CREATE INDEX idx_tasks_team_id ON tasks(team_id);
+CREATE INDEX idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 ```
 
 ## Testing Infrastructure
@@ -477,13 +487,14 @@ Returns: { user }
 ### Task Endpoints
 
 ```
-GET /api/tasks
+GET /api/tasks?team_id=1&status=todo&priority=high
 Headers: Authorization: Bearer <token>
+Query: team_id (number|'unassigned'), status, priority
 Returns: { tasks: Task[] }
 
 POST /api/tasks
 Headers: Authorization: Bearer <token>
-Body: { title, description?, status?, priority? }
+Body: { title, description?, status?, priority?, team_id, assignee_id? }
 Returns: { task: Task }
 
 GET /api/tasks/:id
@@ -498,6 +509,36 @@ Returns: { task: Task }
 DELETE /api/tasks/:id
 Headers: Authorization: Bearer <token>
 Returns: 204 No Content
+```
+
+### Team Endpoints
+
+```
+POST /api/teams
+Headers: Authorization: Bearer <token>
+Body: { name }
+Returns: { team: Team }
+
+GET /api/teams
+Headers: Authorization: Bearer <token>
+Returns: { teams: Team[] }
+
+GET /api/teams/:id
+Headers: Authorization: Bearer <token>
+Returns: { team: TeamWithMembers }
+
+POST /api/teams/:id/members
+Headers: Authorization: Bearer <token>
+Body: { userId }
+Returns: { member: TeamMember }
+
+DELETE /api/teams/:id/members/:userId
+Headers: Authorization: Bearer <token>
+Returns: 204 No Content
+
+DELETE /api/teams/:id
+Headers: Authorization: Bearer <token>
+Returns: 204 No Content (owner only)
 ```
 
 ## Dependencies Overview
@@ -557,11 +598,12 @@ Returns: 204 No Content
 
 1. No pagination on list endpoints (will be slow with many tasks)
 2. No database migration rollback support
-3. JWT tokens don't expire (implement expiration in Module 4)
+3. JWT tokens don't enforce expiration (set but not checked)
 4. No rate limiting on API endpoints
 5. Error messages expose too much in development mode
 6. No request logging middleware
 7. No API versioning strategy
+8. Team membership checks could be cached for performance
 
 ## Future Technical Enhancements
 
