@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { Task, CreateTaskDTO, UpdateTaskDTO, ApiResponse } from '../types/task.types';
+import { AuthService } from './auth.service';
 
 /**
  * Base API URL from environment variables
@@ -11,8 +12,28 @@ console.log('[TaskService] API Base URL:', API_BASE_URL);
 
 /**
  * Task Service - handles all API calls for task operations
+ * All requests include Authorization header with JWT token
  */
 export class TaskService {
+  /**
+   * Get headers with Authorization token
+   * @returns Headers object with Content-Type and Authorization
+   */
+  private static getHeaders(): HeadersInit {
+    const token = AuthService.getToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('[TaskService] Including Authorization header');
+    } else {
+      console.warn('[TaskService] No token found, request may fail');
+    }
+    
+    return headers;
+  }
   /**
    * Get all tasks
    * @param filters - Optional filters for status/priority
@@ -31,7 +52,9 @@ export class TaskService {
       const url = `${API_BASE_URL}/api/tasks${queryString ? `?${queryString}` : ''}`;
       console.log('[TaskService] Request URL:', url);
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -60,7 +83,9 @@ export class TaskService {
     try {
       console.log(`[TaskService] Fetching task ${id}`);
       
-      const response = await fetch(`${API_BASE_URL}/api/tasks/${id}`);
+      const response = await fetch(`${API_BASE_URL}/api/tasks/${id}`, {
+        headers: this.getHeaders(),
+      });
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -91,9 +116,7 @@ export class TaskService {
       
       const response = await fetch(`${API_BASE_URL}/api/tasks`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(taskData),
       });
       
@@ -127,9 +150,7 @@ export class TaskService {
       
       const response = await fetch(`${API_BASE_URL}/api/tasks/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: this.getHeaders(),
         body: JSON.stringify(taskData),
       });
       
@@ -162,6 +183,7 @@ export class TaskService {
       
       const response = await fetch(`${API_BASE_URL}/api/tasks/${id}`, {
         method: 'DELETE',
+        headers: this.getHeaders(),
       });
       
       if (!response.ok) {
