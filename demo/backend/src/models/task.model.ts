@@ -434,4 +434,178 @@ export class TaskModel {
       throw handleDatabaseError(error);
     }
   }
+
+  /**
+   * OPTIMIZATION: Batch create multiple tasks
+   * Reduces round trips to database by inserting multiple tasks in one query
+   * 
+   * @param tasksData - Array of task data to create
+   * @returns Array of created tasks
+   */
+  static async batchCreate(tasksData: CreateTaskDTO[]): Promise<Task[]> {
+    console.log(`[TaskModel] Batch creating ${tasksData.length} tasks`);
+    
+    if (tasksData.length === 0) {
+      return [];
+    }
+    
+    try {
+      // Build VALUES clauses for batch insert
+      const values: any[] = [];
+      const valuePlaceholders: string[] = [];
+      let paramCount = 1;
+      
+      for (const taskData of tasksData) {
+        const { title, description, status = 'todo', priority = 'medium', assignee_id, creator_id, team_id } = taskData;
+        
+        valuePlaceholders.push(
+          `($${paramCount++}, $${paramCount++}, $${paramCount++}, $${paramCount++}, $${paramCount++}, $${paramCount++}, $${paramCount++})`
+        );
+        
+        values.push(title, description, status, priority, assignee_id, creator_id, team_id);
+      }
+      
+      const query = `
+        INSERT INTO tasks (title, description, status, priority, assignee_id, creator_id, team_id)
+        VALUES ${valuePlaceholders.join(', ')}
+        RETURNING *
+      `;
+      
+      const result = await pool.query(query, values);
+      
+      console.log(`[TaskModel] Batch created ${result.rows.length} tasks successfully`);
+      return result.rows;
+    } catch (error) {
+      console.error('[TaskModel] Error batch creating tasks:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Batch update task status
+   * Useful for bulk operations like "mark all as done"
+   * 
+   * @param ids - Array of task IDs to update
+   * @param status - New status for all tasks
+   * @returns Number of tasks updated
+   */
+  static async batchUpdateStatus(
+    ids: number[],
+    status: 'todo' | 'in_progress' | 'done'
+  ): Promise<number> {
+    console.log(`[TaskModel] Batch updating status to "${status}" for ${ids.length} tasks`);
+    
+    if (ids.length === 0) {
+      return 0;
+    }
+    
+    try {
+      const result = await pool.query(
+        `UPDATE tasks 
+         SET status = $1, updated_at = NOW()
+         WHERE id = ANY($2)
+         RETURNING id`,
+        [status, ids]
+      );
+      
+      console.log(`[TaskModel] Batch updated ${result.rows.length} tasks to status "${status}"`);
+      return result.rows.length;
+    } catch (error) {
+      console.error('[TaskModel] Error batch updating task status:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Batch delete tasks
+   * Useful for cleaning up or bulk deletions
+   * 
+   * @param ids - Array of task IDs to delete
+   * @returns Number of tasks deleted
+   */
+  static async batchDelete(ids: number[]): Promise<number> {
+    console.log(`[TaskModel] Batch deleting ${ids.length} tasks`);
+    
+    if (ids.length === 0) {
+      return 0;
+    }
+    
+    try {
+      const result = await pool.query(
+        'DELETE FROM tasks WHERE id = ANY($1) RETURNING id',
+        [ids]
+      );
+      
+      console.log(`[TaskModel] Batch deleted ${result.rows.length} tasks successfully`);
+      return result.rows.length;
+    } catch (error) {
+      console.error('[TaskModel] Error batch deleting tasks:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Get tasks by multiple IDs in one query
+   * Avoids N+1 queries when fetching multiple tasks
+   * 
+   * @param ids - Array of task IDs
+   * @returns Array of tasks (may be fewer than requested if some IDs don't exist)
+   */
+  static async findByIds(ids: number[]): Promise<Task[]> {
+    console.log(`[TaskModel] Fetching ${ids.length} tasks by IDs`);
+    
+    if (ids.length === 0) {
+      return [];
+    }
+    
+    try {
+      const result = await pool.query(
+        'SELECT * FROM tasks WHERE id = ANY($1) ORDER BY created_at DESC',
+        [ids]
+      );
+      
+      console.log(`[TaskModel] Found ${result.rows.length} tasks out of ${ids.length} requested`);
+      return result.rows;
+    } catch (error) {
+      console.error('[TaskModel] Error fetching tasks by IDs:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Get task counts grouped by status
+   * Useful for dashboard statistics without multiple queries
+   * 
+   * @param team_id - Optional team ID to filter by
+   * @returns Object with counts by status
+   */
+  static async getStatusCounts(team_id?: number): Promise<Record<string, number>> {
+    console.log(`[TaskModel] Getting status counts${team_id ? ` for team ${team_id}` : ''}`);
+    
+    try {
+      const query = team_id
+        ? 'SELECT status, COUNT(*) as count FROM tasks WHERE team_id = $1 GROUP BY status'
+        : 'SELECT status, COUNT(*) as count FROM tasks GROUP BY status';
+      
+      const params = team_id ? [team_id] : [];
+      const result = await pool.query(query, params);
+      
+      // Convert to object
+      const counts: Record<string, number> = {
+        todo: 0,
+        in_progress: 0,
+        done: 0,
+      };
+      
+      for (const row of result.rows) {
+        counts[row.status] = parseInt(row.count);
+      }
+      
+      console.log('[TaskModel] Status counts:', counts);
+      return counts;
+    } catch (error) {
+      console.error('[TaskModel] Error getting status counts:', error);
+      throw handleDatabaseError(error);
+    }
+  }
 }

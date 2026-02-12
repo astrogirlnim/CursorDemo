@@ -5,11 +5,22 @@ import { ApiResponse } from './types';
 import taskRoutes from './routes/task.routes';
 import authRoutes from './routes/auth.routes';
 import teamRoutes from './routes/team.routes';
+import { requestTimeout, performanceMonitor } from './middleware/timeout';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { testConnection, getPoolStats } from './config/database';
 
 // Load environment variables
 dotenv.config();
 
 console.log('[Server] Initializing Team Task Manager API...');
+
+// Test database connection
+testConnection().then(success => {
+  if (!success) {
+    console.error('[Server] Failed to connect to database. Exiting...');
+    process.exit(1);
+  }
+});
 
 // Create Express application
 const app = express();
@@ -21,16 +32,30 @@ app.use(cors({
   credentials: true,
 }));
 
-// Add JSON body parser
-app.use(express.json());
+// Add JSON body parser with size limit
+app.use(express.json({ limit: '10mb' }));
 
-// Health check route
+// Add performance monitoring middleware (logs request duration)
+console.log('[Server] Adding performance monitoring middleware');
+app.use(performanceMonitor);
+
+// Add request timeout middleware (30s timeout)
+console.log('[Server] Adding request timeout middleware (30s)');
+app.use(requestTimeout(30000));
+
+// Health check route with database stats
 app.get('/health', (req: Request, res: Response) => {
   console.log('[Server] Health check requested');
+  const poolStats = getPoolStats();
   res.json({ 
     success: true, 
     message: 'Server is running',
-    data: null
+    data: {
+      status: 'healthy',
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      database: poolStats,
+    }
   } as ApiResponse);
 });
 
@@ -44,15 +69,12 @@ app.use('/api/tasks', taskRoutes);
 console.log('[Server] Registering team routes at /api/teams');
 app.use('/api/teams', teamRoutes);
 
-// 404 handler
-app.use((req: Request, res: Response) => {
-  console.log(`[Server] 404 - Route not found: ${req.method} ${req.path}`);
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    data: null
-  } as ApiResponse);
-});
+// 404 handler (must come after all routes)
+console.log('[Server] Registering 404 and error handlers');
+app.use(notFoundHandler);
+
+// Global error handler (must be last)
+app.use(errorHandler);
 
 // Get port from environment
 const PORT = process.env.PORT || 3000;

@@ -1,5 +1,6 @@
 import { pool } from '../config/database';
 import { handleDatabaseError } from '../utils/errors';
+import { cache, CacheKeys, CacheInvalidation } from '../utils/cache';
 
 /**
  * Team interface matching database schema
@@ -285,6 +286,10 @@ export class TeamModel {
       );
       
       console.log(`[TeamModel] User ${user_id} added to team ${team_id} successfully`);
+      
+      // Invalidate relevant caches
+      CacheInvalidation.teamMembership(team_id, user_id);
+      
       return result.rows[0];
     } catch (error) {
       console.error('[TeamModel] Error adding team member:', error);
@@ -313,6 +318,10 @@ export class TeamModel {
       }
       
       console.log(`[TeamModel] User ${user_id} removed from team ${team_id} successfully`);
+      
+      // Invalidate relevant caches
+      CacheInvalidation.teamMembership(team_id, user_id);
+      
       return true;
     } catch (error) {
       console.error('[TeamModel] Error removing team member:', error);
@@ -323,6 +332,8 @@ export class TeamModel {
   /**
    * Check if a user is a member of a team
    * Uses EXISTS for better performance than COUNT(*)
+   * OPTIMIZED: Caches membership checks for 60s to reduce database queries
+   * 
    * @param team_id - Team ID
    * @param user_id - User ID to check
    * @returns True if user is a member, false otherwise
@@ -331,15 +342,24 @@ export class TeamModel {
     console.log(`[TeamModel] Checking if user ${user_id} is member of team ${team_id}`);
     
     try {
-      const result = await pool.query(
-        'SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2) as is_member',
-        [team_id, user_id]
+      // Try to get from cache first (most accessed query in the app)
+      const cacheKey = CacheKeys.teamMember(team_id, user_id);
+      
+      return await cache.getOrCompute(
+        cacheKey,
+        async () => {
+          const result = await pool.query(
+            'SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2) as is_member',
+            [team_id, user_id]
+          );
+          
+          const isMember = result.rows[0].is_member;
+          console.log(`[TeamModel] User ${user_id} is${isMember ? '' : ' NOT'} a member of team ${team_id} (from DB)`);
+          
+          return isMember;
+        },
+        60000 // Cache for 60 seconds
       );
-      
-      const isMember = result.rows[0].is_member;
-      console.log(`[TeamModel] User ${user_id} is${isMember ? '' : ' NOT'} a member of team ${team_id}`);
-      
-      return isMember;
     } catch (error) {
       console.error('[TeamModel] Error checking team membership:', error);
       throw handleDatabaseError(error);
@@ -349,6 +369,8 @@ export class TeamModel {
   /**
    * Check if a user is the owner of a team
    * Uses EXISTS for better performance than COUNT(*)
+   * OPTIMIZED: Caches ownership checks for 60s to reduce database queries
+   * 
    * @param team_id - Team ID
    * @param user_id - User ID to check
    * @returns True if user is the owner, false otherwise
@@ -357,15 +379,24 @@ export class TeamModel {
     console.log(`[TeamModel] Checking if user ${user_id} is owner of team ${team_id}`);
     
     try {
-      const result = await pool.query(
-        'SELECT EXISTS(SELECT 1 FROM teams WHERE id = $1 AND owner_id = $2) as is_owner',
-        [team_id, user_id]
+      // Try to get from cache first (frequently accessed for authorization)
+      const cacheKey = CacheKeys.teamOwner(team_id, user_id);
+      
+      return await cache.getOrCompute(
+        cacheKey,
+        async () => {
+          const result = await pool.query(
+            'SELECT EXISTS(SELECT 1 FROM teams WHERE id = $1 AND owner_id = $2) as is_owner',
+            [team_id, user_id]
+          );
+          
+          const isOwner = result.rows[0].is_owner;
+          console.log(`[TeamModel] User ${user_id} is${isOwner ? '' : ' NOT'} the owner of team ${team_id} (from DB)`);
+          
+          return isOwner;
+        },
+        60000 // Cache for 60 seconds
       );
-      
-      const isOwner = result.rows[0].is_owner;
-      console.log(`[TeamModel] User ${user_id} is${isOwner ? '' : ' NOT'} the owner of team ${team_id}`);
-      
-      return isOwner;
     } catch (error) {
       console.error('[TeamModel] Error checking team ownership:', error);
       throw handleDatabaseError(error);
@@ -392,9 +423,56 @@ export class TeamModel {
       }
       
       console.log(`[TeamModel] Team ${id} deleted successfully (CASCADE removed members)`);
+      
+      // Invalidate all team-related caches
+      CacheInvalidation.team(id);
+      
       return true;
     } catch (error) {
       console.error('[TeamModel] Error deleting team:', error);
+      throw handleDatabaseError(error);
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Batch check team membership for multiple users
+   * Reduces N+1 queries when checking multiple users at once
+   * 
+   * @param team_id - Team ID
+   * @param user_ids - Array of user IDs to check
+   * @returns Map of user_id to boolean (member or not)
+   */
+  static async batchCheckMembers(
+    team_id: number,
+    user_ids: number[]
+  ): Promise<Map<number, boolean>> {
+    console.log(`[TeamModel] Batch checking ${user_ids.length} users for team ${team_id}`);
+    
+    try {
+      if (user_ids.length === 0) {
+        return new Map();
+      }
+      
+      // Single query with IN clause
+      const result = await pool.query(
+        `SELECT user_id 
+         FROM team_members 
+         WHERE team_id = $1 AND user_id = ANY($2)`,
+        [team_id, user_ids]
+      );
+      
+      // Build map of results
+      const memberSet = new Set(result.rows.map(row => row.user_id));
+      const resultMap = new Map<number, boolean>();
+      
+      for (const userId of user_ids) {
+        resultMap.set(userId, memberSet.has(userId));
+      }
+      
+      console.log(`[TeamModel] Batch check complete: ${result.rows.length}/${user_ids.length} are members`);
+      return resultMap;
+    } catch (error) {
+      console.error('[TeamModel] Error batch checking members:', error);
       throw handleDatabaseError(error);
     }
   }
