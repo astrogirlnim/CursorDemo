@@ -1,0 +1,233 @@
+import { useEffect, useState } from 'react';
+import { Task, TASK_STATUS_CONFIG, TASK_PRIORITY_CONFIG } from '../types/task.types';
+import { TaskService } from '../services/task.service';
+
+interface TaskListProps {
+  onEdit: (task: Task) => void;
+  refreshTrigger?: number;
+}
+
+/**
+ * TaskList Component
+ * Displays all tasks with filtering, status updates, and delete functionality
+ */
+export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+
+  // Fetch tasks on mount and when filters or refreshTrigger change
+  useEffect(() => {
+    fetchTasks();
+  }, [statusFilter, priorityFilter, refreshTrigger]);
+
+  /**
+   * Fetch tasks from API with current filters
+   */
+  const fetchTasks = async () => {
+    try {
+      console.log('[TaskList] Fetching tasks...');
+      setLoading(true);
+      setError(null);
+      
+      const filters: any = {};
+      if (statusFilter !== 'all') filters.status = statusFilter;
+      if (priorityFilter !== 'all') filters.priority = priorityFilter;
+      
+      const data = await TaskService.getAllTasks(filters);
+      console.log(`[TaskList] Loaded ${data.length} tasks`);
+      setTasks(data);
+    } catch (err) {
+      console.error('[TaskList] Error fetching tasks:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Update task status
+   */
+  const handleStatusChange = async (taskId: number, newStatus: Task['status']) => {
+    try {
+      console.log(`[TaskList] Updating task ${taskId} status to ${newStatus}`);
+      await TaskService.updateTask(taskId, { status: newStatus });
+      
+      // Update local state
+      setTasks(tasks.map(task => 
+        task.id === taskId ? { ...task, status: newStatus } : task
+      ));
+    } catch (err) {
+      console.error('[TaskList] Error updating task status:', err);
+      alert('Failed to update task status');
+    }
+  };
+
+  /**
+   * Delete a task
+   */
+  const handleDelete = async (taskId: number) => {
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+
+    try {
+      console.log(`[TaskList] Deleting task ${taskId}`);
+      await TaskService.deleteTask(taskId);
+      
+      // Remove from local state
+      setTasks(tasks.filter(task => task.id !== taskId));
+    } catch (err) {
+      console.error('[TaskList] Error deleting task:', err);
+      alert('Failed to delete task');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+        <p className="font-semibold">Error loading tasks</p>
+        <p className="text-sm">{error}</p>
+        <button
+          onClick={fetchTasks}
+          className="mt-2 text-sm underline hover:no-underline"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex gap-4 flex-wrap">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Status
+          </label>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Priority
+          </label>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+
+        <div className="flex items-end">
+          <button
+            onClick={fetchTasks}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Task count */}
+      <div className="text-sm text-gray-600">
+        Showing {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+      </div>
+
+      {/* Tasks list */}
+      {tasks.length === 0 ? (
+        <div className="text-center py-12 bg-gray-50 rounded-lg">
+          <p className="text-gray-500">No tasks found</p>
+          <p className="text-sm text-gray-400 mt-1">Create a new task to get started</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tasks.map((task) => (
+            <div
+              key={task.id}
+              className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  {/* Title and priority */}
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-900">{task.title}</h3>
+                    <span className={`text-xs ${TASK_PRIORITY_CONFIG[task.priority].color}`}>
+                      {TASK_PRIORITY_CONFIG[task.priority].icon} {TASK_PRIORITY_CONFIG[task.priority].label}
+                    </span>
+                  </div>
+
+                  {/* Description */}
+                  {task.description && (
+                    <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                  )}
+
+                  {/* Metadata */}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                    <span>ID: {task.id}</span>
+                    <span>Created: {new Date(task.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-2 ml-4">
+                  {/* Status selector */}
+                  <select
+                    value={task.status}
+                    onChange={(e) => handleStatusChange(task.id, e.target.value as Task['status'])}
+                    className={`text-xs px-2 py-1 rounded-full border-0 font-medium ${TASK_STATUS_CONFIG[task.status].color}`}
+                  >
+                    <option value="todo">To Do</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                  </select>
+
+                  {/* Edit button */}
+                  <button
+                    onClick={() => onEdit(task)}
+                    className="text-xs px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                  >
+                    Edit
+                  </button>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={() => handleDelete(task.id)}
+                    className="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

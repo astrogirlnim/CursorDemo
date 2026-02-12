@@ -1,4 +1,11 @@
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
+
+// Load environment variables first
+dotenv.config();
+
+console.log('[Database] Initializing connection pool...');
+console.log('[Database] DATABASE_URL:', process.env.DATABASE_URL);
 
 // Create PostgreSQL connection pool
 export const pool = new Pool({
@@ -10,11 +17,11 @@ export const pool = new Pool({
 
 // Log successful connection
 pool.on('connect', () => {
-  console.log('Database connected successfully');
+  console.log('[Database] Connected successfully');
 });
 
 // Handle connection errors
 pool.on('error', (err) => {
-  console.error('Unexpected database error:', err);
+  console.error('[Database] Unexpected error:', err);
   process.exit(-1);
 });
