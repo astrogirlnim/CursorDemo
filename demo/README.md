@@ -2,6 +2,66 @@
 
 A full-stack task management application demonstrating Cursor IDE capabilities through progressive feature development.
 
+## Quick Start Guide
+
+Get the application running in 5 minutes:
+
+### Prerequisites
+- Node.js 18+ installed
+- PostgreSQL 15+ installed and running
+- Git
+
+### Installation Steps
+
+```bash
+# 1. Clone the repository
+git clone <repository-url>
+cd team-task-manager
+
+# 2. Install dependencies
+cd backend && npm install
+cd ../frontend && npm install
+
+# 3. Setup database
+createdb taskmanager
+cd backend && npm run migrate
+
+# 4. Configure environment
+cd backend
+cp .env.example .env
+# Edit .env and set your JWT_SECRET (use: openssl rand -base64 32)
+
+cd ../frontend
+cp .env.example .env
+# VITE_API_URL should be http://localhost:3000
+
+# 5. Start development servers (in separate terminals)
+cd backend && npm run dev     # Runs on http://localhost:3000
+cd frontend && npm run dev    # Runs on http://localhost:5173
+```
+
+### First Login
+
+1. Open http://localhost:5173
+2. Click "Register" and create an account
+3. You'll be automatically logged in
+4. Create a team to start managing tasks!
+
+### Running Tests
+
+```bash
+# Backend tests
+cd backend && npm test
+
+# Frontend tests
+cd frontend && npm test
+
+# E2E tests (requires servers running)
+cd frontend && npm run test:e2e
+```
+
+---
+
 ## Project Overview
 
 This repository demonstrates building a production-ready Team Task Manager using Cursor IDE features. The application is built progressively across seven modules, with each module introducing new Cursor capabilities while adding functionality.
