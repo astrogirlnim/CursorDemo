@@ -83,6 +83,53 @@ The API uses standard HTTP status codes:
 | 409 | Conflict - Resource already exists (e.g., duplicate email) |
 | 500 | Internal Server Error - Server-side error occurred |
 
+## Pagination
+
+Many list endpoints support pagination to handle large result sets efficiently. Pagination is available for:
+
+- `GET /api/tasks` - All tasks and filtered tasks
+- `GET /api/teams` - User's teams
+
+### Pagination Parameters
+
+| Parameter | Type | Default | Max | Description |
+|-----------|------|---------|-----|-------------|
+| `page` | number | 1 | - | Page number (1-indexed) |
+| `limit` | number | 10 | 100 | Number of items per page |
+
+### Pagination Response Format
+
+Paginated responses include both the data array and pagination metadata:
+
+```json
+{
+  "success": true,
+  "message": "Resources retrieved successfully",
+  "data": [...],
+  "pagination": {
+    "currentPage": 2,
+    "totalPages": 5,
+    "totalItems": 42,
+    "itemsPerPage": 10,
+    "hasNextPage": true,
+    "hasPrevPage": true
+  }
+}
+```
+
+### Example Usage
+
+```bash
+# First page (default)
+GET /api/tasks
+
+# Specific page with custom limit
+GET /api/tasks?page=3&limit=25
+
+# Combine pagination with filters
+GET /api/tasks?team_id=1&page=2&limit=15
+```
+
 ## Rate Limiting
 
 Currently, the API does not implement rate limiting. In production, consider implementing rate limiting to prevent abuse:
@@ -327,7 +374,7 @@ curl -X GET http://localhost:3000/api/auth/me \
 
 ### Get All Tasks
 
-Retrieve all tasks with optional filtering by team, status, or priority.
+Retrieve all tasks with optional filtering by team, status, or priority. Supports pagination for large result sets.
 
 **Endpoint:** `GET /api/tasks`
 
@@ -337,11 +384,13 @@ Retrieve all tasks with optional filtering by team, status, or priority.
 
 | Parameter | Type | Description | Example |
 |-----------|------|-------------|---------|
+| `page` | number | Page number (1-indexed, default: 1) | `?page=2` |
+| `limit` | number | Results per page (default: 10, max: 100) | `?limit=20` |
 | `team_id` | number or "unassigned" | Filter tasks by team ID, or "unassigned" for tasks with no team | `?team_id=1` or `?team_id=unassigned` |
 | `status` | string | Filter by task status: `todo`, `in_progress`, `done` | `?status=in_progress` |
 | `priority` | string | Filter by priority: `low`, `medium`, `high` | `?priority=high` |
 
-**Note:** Only one filter can be applied at a time. Priority order: `team_id` > `status` > `priority`.
+**Note:** Only one filter (`team_id`, `status`, or `priority`) can be applied at a time. Priority order: `team_id` > `status` > `priority`. Pagination can be combined with any filter.
 
 **Success Response (200):**
 
@@ -374,9 +423,26 @@ Retrieve all tasks with optional filtering by team, status, or priority.
       "created_at": "2026-02-11T11:00:00.000Z",
       "updated_at": "2026-02-11T11:00:00.000Z"
     }
-  ]
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 5,
+    "totalItems": 42,
+    "itemsPerPage": 10,
+    "hasNextPage": true,
+    "hasPrevPage": false
+  }
 }
 ```
+
+**Pagination Response Fields:**
+
+- `currentPage`: Current page number (1-indexed)
+- `totalPages`: Total number of pages available
+- `totalItems`: Total number of items matching the query
+- `itemsPerPage`: Number of items per page (same as `limit` parameter)
+- `hasNextPage`: Boolean indicating if there's a next page
+- `hasPrevPage`: Boolean indicating if there's a previous page
 
 **Error Responses:**
 
@@ -410,20 +476,24 @@ Retrieve all tasks with optional filtering by team, status, or priority.
 **cURL Examples:**
 
 ```bash
-# Get all tasks
+# Get all tasks (first page)
 curl -X GET http://localhost:3000/api/tasks \
   -H "Authorization: Bearer <token>"
 
-# Filter by team
-curl -X GET "http://localhost:3000/api/tasks?team_id=1" \
+# Get tasks with pagination (page 2, 20 items per page)
+curl -X GET "http://localhost:3000/api/tasks?page=2&limit=20" \
+  -H "Authorization: Bearer <token>"
+
+# Filter by team with pagination
+curl -X GET "http://localhost:3000/api/tasks?team_id=1&page=1&limit=10" \
   -H "Authorization: Bearer <token>"
 
 # Get unassigned tasks
 curl -X GET "http://localhost:3000/api/tasks?team_id=unassigned" \
   -H "Authorization: Bearer <token>"
 
-# Filter by status
-curl -X GET "http://localhost:3000/api/tasks?status=in_progress" \
+# Filter by status with pagination
+curl -X GET "http://localhost:3000/api/tasks?status=in_progress&page=1&limit=15" \
   -H "Authorization: Bearer <token>"
 
 # Filter by priority
@@ -808,7 +878,8 @@ Create a new team. The authenticated user automatically becomes the owner.
 ```json
 {
   "success": false,
-  "error": "Team name is required and must be a non-empty string"
+  "message": "name is required",
+  "data": null
 }
 ```
 
@@ -827,17 +898,25 @@ curl -X POST http://localhost:3000/api/teams \
 
 ### Get All Teams
 
-Get all teams where the authenticated user is a member.
+Get all teams where the authenticated user is a member. Supports pagination for users with many teams.
 
 **Endpoint:** `GET /api/teams`
 
 **Authentication:** Required
+
+**Query Parameters:**
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `page` | number | Page number (1-indexed, default: 1) | `?page=2` |
+| `limit` | number | Results per page (default: 10, max: 100) | `?limit=20` |
 
 **Success Response (200):**
 
 ```json
 {
   "success": true,
+  "message": "Teams retrieved successfully",
   "data": [
     {
       "id": 1,
@@ -853,14 +932,27 @@ Get all teams where the authenticated user is a member.
       "created_at": "2026-02-11T11:00:00.000Z",
       "updated_at": "2026-02-11T11:00:00.000Z"
     }
-  ]
+  ],
+  "pagination": {
+    "currentPage": 1,
+    "totalPages": 1,
+    "totalItems": 2,
+    "itemsPerPage": 10,
+    "hasNextPage": false,
+    "hasPrevPage": false
+  }
 }
 ```
 
-**cURL Example:**
+**cURL Examples:**
 
 ```bash
+# Get all teams (first page)
 curl -X GET http://localhost:3000/api/teams \
+  -H "Authorization: Bearer <token>"
+
+# Get teams with pagination
+curl -X GET "http://localhost:3000/api/teams?page=2&limit=15" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -885,6 +977,7 @@ Get detailed information about a specific team, including members.
 ```json
 {
   "success": true,
+  "message": "Team retrieved successfully",
   "data": {
     "id": 1,
     "name": "Frontend Development Team",
@@ -911,13 +1004,16 @@ Get detailed information about a specific team, including members.
 }
 ```
 
+**Performance Note:** This endpoint uses an optimized single query to fetch the team and all members together, avoiding the N+1 query problem.
+
 **Error Responses:**
 
 **400 - Invalid ID:**
 ```json
 {
   "success": false,
-  "error": "Invalid team ID"
+  "message": "Invalid team ID",
+  "data": null
 }
 ```
 
@@ -925,7 +1021,8 @@ Get detailed information about a specific team, including members.
 ```json
 {
   "success": false,
-  "error": "You do not have access to this team"
+  "message": "You do not have access to this team",
+  "data": null
 }
 ```
 
@@ -933,7 +1030,8 @@ Get detailed information about a specific team, including members.
 ```json
 {
   "success": false,
-  "error": "Team not found"
+  "message": "Team not found",
+  "data": null
 }
 ```
 
@@ -995,7 +1093,8 @@ Add a user to a team as a member.
 ```json
 {
   "success": false,
-  "error": "Invalid team ID"
+  "message": "Invalid team ID",
+  "data": null
 }
 ```
 
@@ -1003,7 +1102,8 @@ Add a user to a team as a member.
 ```json
 {
   "success": false,
-  "error": "Valid user_id is required"
+  "message": "Invalid user_id",
+  "data": null
 }
 ```
 
@@ -1011,7 +1111,8 @@ Add a user to a team as a member.
 ```json
 {
   "success": false,
-  "error": "User is already a member of this team"
+  "message": "User is already a member of this team",
+  "data": null
 }
 ```
 
@@ -1019,7 +1120,8 @@ Add a user to a team as a member.
 ```json
 {
   "success": false,
-  "error": "Only team owner can add members"
+  "message": "Only team owner can add members",
+  "data": null
 }
 ```
 
@@ -1061,7 +1163,8 @@ Remove a member from a team.
 ```json
 {
   "success": true,
-  "message": "Member removed successfully"
+  "message": "Member removed successfully",
+  "data": null
 }
 ```
 
@@ -1071,7 +1174,8 @@ Remove a member from a team.
 ```json
 {
   "success": false,
-  "error": "Invalid team ID or user ID"
+  "message": "Invalid team ID or user ID",
+  "data": null
 }
 ```
 
@@ -1079,7 +1183,8 @@ Remove a member from a team.
 ```json
 {
   "success": false,
-  "error": "Team owner cannot remove themselves. Delete the team instead."
+  "message": "Team owner cannot remove themselves. Delete the team instead.",
+  "data": null
 }
 ```
 
@@ -1087,7 +1192,8 @@ Remove a member from a team.
 ```json
 {
   "success": false,
-  "error": "Only team owner can remove members"
+  "message": "Only team owner can remove members",
+  "data": null
 }
 ```
 
@@ -1095,7 +1201,8 @@ Remove a member from a team.
 ```json
 {
   "success": false,
-  "error": "Member not found in team"
+  "message": "Member not found",
+  "data": null
 }
 ```
 
@@ -1133,7 +1240,8 @@ When a team is deleted:
 ```json
 {
   "success": true,
-  "message": "Team deleted successfully"
+  "message": "Team deleted successfully",
+  "data": null
 }
 ```
 
@@ -1143,7 +1251,8 @@ When a team is deleted:
 ```json
 {
   "success": false,
-  "error": "Invalid team ID"
+  "message": "Invalid team ID",
+  "data": null
 }
 ```
 
@@ -1151,7 +1260,8 @@ When a team is deleted:
 ```json
 {
   "success": false,
-  "error": "Only team owner can delete the team"
+  "message": "Only team owner can delete the team",
+  "data": null
 }
 ```
 
@@ -1159,7 +1269,8 @@ When a team is deleted:
 ```json
 {
   "success": false,
-  "error": "Team not found"
+  "message": "Team not found",
+  "data": null
 }
 ```
 
