@@ -62,6 +62,7 @@ export function TeamProvider({ children }: { children: ReactNode }) {
 
   /**
    * Restore selected team from localStorage when teams are loaded
+   * Clear current team if no teams available
    */
   useEffect(() => {
     if (teams.length > 0) {
@@ -87,6 +88,11 @@ export function TeamProvider({ children }: { children: ReactNode }) {
         setCurrentTeam(teams[0]);
         localStorage.setItem(SELECTED_TEAM_KEY, teams[0].id.toString());
       }
+    } else {
+      // No teams available, clear current team and localStorage
+      console.log('[TeamContext] No teams available, clearing current team selection');
+      setCurrentTeam(null);
+      localStorage.removeItem(SELECTED_TEAM_KEY);
     }
   }, [teams]);
 
