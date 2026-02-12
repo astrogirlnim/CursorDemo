@@ -1,5 +1,6 @@
 import { pool } from '../config/database';
 import bcrypt from 'bcryptjs';
+import { handleDatabaseError } from '../utils/errors';
 
 /**
  * User interface matching database schema
@@ -48,24 +49,29 @@ export class UserModel {
   static async createUser(data: CreateUserDTO): Promise<User> {
     console.log('[UserModel] Creating new user:', data.email);
     
-    const { email, password, name } = data;
-    
-    // Hash password with bcrypt (10 salt rounds for security)
-    console.log('[UserModel] Hashing password...');
-    const password_hash = await bcrypt.hash(password, 10);
-    console.log('[UserModel] Password hashed successfully');
-    
-    // Insert user into database with prepared statement
-    console.log('[UserModel] Inserting user into database...');
-    const result = await pool.query(
-      `INSERT INTO users (email, password_hash, name)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [email, password_hash, name]
-    );
-    
-    console.log(`[UserModel] User created successfully with id: ${result.rows[0].id}`);
-    return result.rows[0];
+    try {
+      const { email, password, name } = data;
+      
+      // Hash password with bcrypt (10 salt rounds for security)
+      console.log('[UserModel] Hashing password...');
+      const password_hash = await bcrypt.hash(password, 10);
+      console.log('[UserModel] Password hashed successfully');
+      
+      // Insert user into database with prepared statement
+      console.log('[UserModel] Inserting user into database...');
+      const result = await pool.query(
+        `INSERT INTO users (email, password_hash, name)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [email, password_hash, name]
+      );
+      
+      console.log(`[UserModel] User created successfully with id: ${result.rows[0].id}`);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[UserModel] Error creating user:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -77,18 +83,23 @@ export class UserModel {
   static async findByEmail(email: string): Promise<User | null> {
     console.log(`[UserModel] Finding user by email: ${email}`);
     
-    const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1',
-      [email]
-    );
-    
-    if (result.rows.length === 0) {
-      console.log('[UserModel] User not found');
-      return null;
+    try {
+      const result = await pool.query(
+        'SELECT * FROM users WHERE email = $1',
+        [email]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log('[UserModel] User not found');
+        return null;
+      }
+      
+      console.log(`[UserModel] Found user: ${result.rows[0].name} (id: ${result.rows[0].id})`);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[UserModel] Error finding user by email:', error);
+      throw handleDatabaseError(error);
     }
-    
-    console.log(`[UserModel] Found user: ${result.rows[0].name} (id: ${result.rows[0].id})`);
-    return result.rows[0];
   }
 
   /**
@@ -100,18 +111,23 @@ export class UserModel {
   static async findById(id: number): Promise<User | null> {
     console.log(`[UserModel] Finding user by id: ${id}`);
     
-    const result = await pool.query(
-      'SELECT * FROM users WHERE id = $1',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      console.log('[UserModel] User not found');
-      return null;
+    try {
+      const result = await pool.query(
+        'SELECT * FROM users WHERE id = $1',
+        [id]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log('[UserModel] User not found');
+        return null;
+      }
+      
+      console.log(`[UserModel] Found user: ${result.rows[0].name} (email: ${result.rows[0].email})`);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[UserModel] Error finding user by ID:', error);
+      throw handleDatabaseError(error);
     }
-    
-    console.log(`[UserModel] Found user: ${result.rows[0].name} (email: ${result.rows[0].email})`);
-    return result.rows[0];
   }
 
   /**
@@ -133,22 +149,27 @@ export class UserModel {
 
   /**
    * Check if an email already exists in the database
-   * Used during registration to prevent duplicate accounts
+   * Uses EXISTS for better performance than COUNT(*)
    * @param email - Email address to check
    * @returns True if email exists, false otherwise
    */
   static async emailExists(email: string): Promise<boolean> {
     console.log(`[UserModel] Checking if email exists: ${email}`);
     
-    const result = await pool.query(
-      'SELECT COUNT(*) FROM users WHERE email = $1',
-      [email]
-    );
-    
-    const exists = parseInt(result.rows[0].count) > 0;
-    console.log(`[UserModel] Email exists: ${exists}`);
-    
-    return exists;
+    try {
+      const result = await pool.query(
+        'SELECT EXISTS(SELECT 1 FROM users WHERE email = $1) as exists',
+        [email]
+      );
+      
+      const exists = result.rows[0].exists;
+      console.log(`[UserModel] Email exists: ${exists}`);
+      
+      return exists;
+    } catch (error) {
+      console.error('[UserModel] Error checking email existence:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**

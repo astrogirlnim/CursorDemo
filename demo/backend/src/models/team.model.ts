@@ -1,4 +1,5 @@
 import { pool } from '../config/database';
+import { handleDatabaseError } from '../utils/errors';
 
 /**
  * Team interface matching database schema
@@ -9,6 +10,14 @@ export interface Team {
   owner_id: number;
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * Paginated team results
+ */
+export interface PaginatedTeams {
+  teams: Team[];
+  total: number;
 }
 
 /**
@@ -82,31 +91,70 @@ export class TeamModel {
     } catch (error) {
       await client.query('ROLLBACK');
       console.error('[TeamModel] Transaction rolled back due to error:', error);
-      throw error;
+      throw handleDatabaseError(error);
     } finally {
       client.release();
     }
   }
 
   /**
-   * Get all teams for a specific user (where user is a member)
+   * Get all teams for a specific user (where user is a member) with pagination
    * @param user_id - User ID to fetch teams for
-   * @returns Array of teams the user is a member of
+   * @param limit - Number of teams to return
+   * @param offset - Number of teams to skip
+   * @returns Paginated teams and total count
    */
-  static async findByUserId(user_id: number): Promise<Team[]> {
-    console.log(`[TeamModel] Fetching teams for user ${user_id}`);
+  static async findByUserId(
+    user_id: number,
+    limit?: number,
+    offset?: number
+  ): Promise<PaginatedTeams> {
+    console.log(`[TeamModel] Fetching teams for user ${user_id}`, { limit, offset });
     
-    const result = await pool.query(
-      `SELECT t.* 
-       FROM teams t
-       INNER JOIN team_members tm ON t.id = tm.team_id
-       WHERE tm.user_id = $1
-       ORDER BY t.created_at DESC`,
-      [user_id]
-    );
-    
-    console.log(`[TeamModel] Found ${result.rows.length} teams for user ${user_id}`);
-    return result.rows;
+    try {
+      const isPaginated = limit !== undefined && offset !== undefined;
+      
+      if (isPaginated) {
+        const [countResult, dataResult] = await Promise.all([
+          pool.query(
+            `SELECT COUNT(DISTINCT t.id) 
+             FROM teams t
+             INNER JOIN team_members tm ON t.id = tm.team_id
+             WHERE tm.user_id = $1`,
+            [user_id]
+          ),
+          pool.query(
+            `SELECT t.* 
+             FROM teams t
+             INNER JOIN team_members tm ON t.id = tm.team_id
+             WHERE tm.user_id = $1
+             ORDER BY t.created_at DESC
+             LIMIT $2 OFFSET $3`,
+            [user_id, limit, offset]
+          ),
+        ]);
+        
+        const total = parseInt(countResult.rows[0].count);
+        console.log(`[TeamModel] Found ${dataResult.rows.length} of ${total} teams for user ${user_id}`);
+        
+        return { teams: dataResult.rows, total };
+      } else {
+        const result = await pool.query(
+          `SELECT t.* 
+           FROM teams t
+           INNER JOIN team_members tm ON t.id = tm.team_id
+           WHERE tm.user_id = $1
+           ORDER BY t.created_at DESC`,
+          [user_id]
+        );
+        
+        console.log(`[TeamModel] Found ${result.rows.length} teams for user ${user_id}`);
+        return { teams: result.rows, total: result.rows.length };
+      }
+    } catch (error) {
+      console.error('[TeamModel] Error fetching teams by user:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -117,18 +165,82 @@ export class TeamModel {
   static async findById(id: number): Promise<Team | null> {
     console.log(`[TeamModel] Fetching team with id: ${id}`);
     
-    const result = await pool.query(
-      'SELECT * FROM teams WHERE id = $1',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      console.log(`[TeamModel] Team with id ${id} not found`);
-      return null;
+    try {
+      const result = await pool.query(
+        'SELECT * FROM teams WHERE id = $1',
+        [id]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log(`[TeamModel] Team with id ${id} not found`);
+        return null;
+      }
+      
+      console.log(`[TeamModel] Found team: ${result.rows[0].name}`);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[TeamModel] Error fetching team by ID:', error);
+      throw handleDatabaseError(error);
     }
+  }
+
+  /**
+   * Get team with members in a single optimized query (solves N+1 problem)
+   * @param id - Team ID
+   * @returns Team with members array or null if not found
+   */
+  static async findByIdWithMembers(id: number): Promise<TeamWithMembers | null> {
+    console.log(`[TeamModel] Fetching team ${id} with members (optimized query)`);
     
-    console.log(`[TeamModel] Found team: ${result.rows[0].name}`);
-    return result.rows[0];
+    try {
+      // Single query to get team and all members
+      // Uses LEFT JOIN to include team even if no members (shouldn't happen, but safe)
+      const result = await pool.query(
+        `SELECT 
+          t.id, t.name, t.owner_id, t.created_at, t.updated_at,
+          tm.id as member_id, tm.user_id, tm.role, tm.joined_at
+         FROM teams t
+         LEFT JOIN team_members tm ON t.id = tm.team_id
+         WHERE t.id = $1
+         ORDER BY tm.joined_at ASC`,
+        [id]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log(`[TeamModel] Team with id ${id} not found`);
+        return null;
+      }
+      
+      // Build team object from first row
+      const firstRow = result.rows[0];
+      const team: TeamWithMembers = {
+        id: firstRow.id,
+        name: firstRow.name,
+        owner_id: firstRow.owner_id,
+        created_at: firstRow.created_at,
+        updated_at: firstRow.updated_at,
+        members: [],
+      };
+      
+      // Build members array from all rows
+      for (const row of result.rows) {
+        if (row.member_id) {
+          team.members.push({
+            id: row.member_id,
+            team_id: row.id,
+            user_id: row.user_id,
+            role: row.role,
+            joined_at: row.joined_at,
+          });
+        }
+      }
+      
+      console.log(`[TeamModel] Found team "${team.name}" with ${team.members.length} members (1 query)`);
+      return team;
+    } catch (error) {
+      console.error('[TeamModel] Error fetching team with members:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -139,15 +251,20 @@ export class TeamModel {
   static async getMembers(team_id: number): Promise<TeamMember[]> {
     console.log(`[TeamModel] Fetching members for team ${team_id}`);
     
-    const result = await pool.query(
-      `SELECT * FROM team_members 
-       WHERE team_id = $1 
-       ORDER BY joined_at ASC`,
-      [team_id]
-    );
-    
-    console.log(`[TeamModel] Found ${result.rows.length} members for team ${team_id}`);
-    return result.rows;
+    try {
+      const result = await pool.query(
+        `SELECT * FROM team_members 
+         WHERE team_id = $1 
+         ORDER BY joined_at ASC`,
+        [team_id]
+      );
+      
+      console.log(`[TeamModel] Found ${result.rows.length} members for team ${team_id}`);
+      return result.rows;
+    } catch (error) {
+      console.error('[TeamModel] Error fetching team members:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -159,15 +276,20 @@ export class TeamModel {
   static async addMember(team_id: number, user_id: number): Promise<TeamMember> {
     console.log(`[TeamModel] Adding user ${user_id} to team ${team_id}`);
     
-    const result = await pool.query(
-      `INSERT INTO team_members (team_id, user_id, role)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
-      [team_id, user_id, 'member']
-    );
-    
-    console.log(`[TeamModel] User ${user_id} added to team ${team_id} successfully`);
-    return result.rows[0];
+    try {
+      const result = await pool.query(
+        `INSERT INTO team_members (team_id, user_id, role)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [team_id, user_id, 'member']
+      );
+      
+      console.log(`[TeamModel] User ${user_id} added to team ${team_id} successfully`);
+      return result.rows[0];
+    } catch (error) {
+      console.error('[TeamModel] Error adding team member:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -179,22 +301,28 @@ export class TeamModel {
   static async removeMember(team_id: number, user_id: number): Promise<boolean> {
     console.log(`[TeamModel] Removing user ${user_id} from team ${team_id}`);
     
-    const result = await pool.query(
-      'DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 RETURNING id',
-      [team_id, user_id]
-    );
-    
-    if (result.rows.length === 0) {
-      console.log(`[TeamModel] Membership not found for user ${user_id} in team ${team_id}`);
-      return false;
+    try {
+      const result = await pool.query(
+        'DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 RETURNING id',
+        [team_id, user_id]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log(`[TeamModel] Membership not found for user ${user_id} in team ${team_id}`);
+        return false;
+      }
+      
+      console.log(`[TeamModel] User ${user_id} removed from team ${team_id} successfully`);
+      return true;
+    } catch (error) {
+      console.error('[TeamModel] Error removing team member:', error);
+      throw handleDatabaseError(error);
     }
-    
-    console.log(`[TeamModel] User ${user_id} removed from team ${team_id} successfully`);
-    return true;
   }
 
   /**
    * Check if a user is a member of a team
+   * Uses EXISTS for better performance than COUNT(*)
    * @param team_id - Team ID
    * @param user_id - User ID to check
    * @returns True if user is a member, false otherwise
@@ -202,19 +330,25 @@ export class TeamModel {
   static async isMember(team_id: number, user_id: number): Promise<boolean> {
     console.log(`[TeamModel] Checking if user ${user_id} is member of team ${team_id}`);
     
-    const result = await pool.query(
-      'SELECT COUNT(*) FROM team_members WHERE team_id = $1 AND user_id = $2',
-      [team_id, user_id]
-    );
-    
-    const isMember = parseInt(result.rows[0].count) > 0;
-    console.log(`[TeamModel] User ${user_id} is${isMember ? '' : ' NOT'} a member of team ${team_id}`);
-    
-    return isMember;
+    try {
+      const result = await pool.query(
+        'SELECT EXISTS(SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2) as is_member',
+        [team_id, user_id]
+      );
+      
+      const isMember = result.rows[0].is_member;
+      console.log(`[TeamModel] User ${user_id} is${isMember ? '' : ' NOT'} a member of team ${team_id}`);
+      
+      return isMember;
+    } catch (error) {
+      console.error('[TeamModel] Error checking team membership:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
    * Check if a user is the owner of a team
+   * Uses EXISTS for better performance than COUNT(*)
    * @param team_id - Team ID
    * @param user_id - User ID to check
    * @returns True if user is the owner, false otherwise
@@ -222,15 +356,20 @@ export class TeamModel {
   static async isOwner(team_id: number, user_id: number): Promise<boolean> {
     console.log(`[TeamModel] Checking if user ${user_id} is owner of team ${team_id}`);
     
-    const result = await pool.query(
-      'SELECT COUNT(*) FROM teams WHERE id = $1 AND owner_id = $2',
-      [team_id, user_id]
-    );
-    
-    const isOwner = parseInt(result.rows[0].count) > 0;
-    console.log(`[TeamModel] User ${user_id} is${isOwner ? '' : ' NOT'} the owner of team ${team_id}`);
-    
-    return isOwner;
+    try {
+      const result = await pool.query(
+        'SELECT EXISTS(SELECT 1 FROM teams WHERE id = $1 AND owner_id = $2) as is_owner',
+        [team_id, user_id]
+      );
+      
+      const isOwner = result.rows[0].is_owner;
+      console.log(`[TeamModel] User ${user_id} is${isOwner ? '' : ' NOT'} the owner of team ${team_id}`);
+      
+      return isOwner;
+    } catch (error) {
+      console.error('[TeamModel] Error checking team ownership:', error);
+      throw handleDatabaseError(error);
+    }
   }
 
   /**
@@ -241,17 +380,22 @@ export class TeamModel {
   static async delete(id: number): Promise<boolean> {
     console.log(`[TeamModel] Deleting team ${id}`);
     
-    const result = await pool.query(
-      'DELETE FROM teams WHERE id = $1 RETURNING id',
-      [id]
-    );
-    
-    if (result.rows.length === 0) {
-      console.log(`[TeamModel] Team with id ${id} not found for deletion`);
-      return false;
+    try {
+      const result = await pool.query(
+        'DELETE FROM teams WHERE id = $1 RETURNING id',
+        [id]
+      );
+      
+      if (result.rows.length === 0) {
+        console.log(`[TeamModel] Team with id ${id} not found for deletion`);
+        return false;
+      }
+      
+      console.log(`[TeamModel] Team ${id} deleted successfully (CASCADE removed members)`);
+      return true;
+    } catch (error) {
+      console.error('[TeamModel] Error deleting team:', error);
+      throw handleDatabaseError(error);
     }
-    
-    console.log(`[TeamModel] Team ${id} deleted successfully (CASCADE removed members)`);
-    return true;
   }
 }
