@@ -13,15 +13,18 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 
 -- Create index on created_at for efficient sorting
-CREATE INDEX idx_tasks_created_at ON tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);
 
--- Insert sample tasks for testing
-INSERT INTO tasks (title, description, status, priority) VALUES
+-- Insert sample tasks for testing (only if table is empty)
+INSERT INTO tasks (title, description, status, priority)
+SELECT * FROM (VALUES
   ('Setup development environment', 'Install Node.js, PostgreSQL, and Cursor IDE', 'done', 'high'),
   ('Create database schema', 'Design and implement tasks table', 'in_progress', 'high'),
   ('Build REST API', 'Implement CRUD endpoints for tasks', 'todo', 'medium'),
   ('Design UI components', 'Create TaskList and TaskForm components', 'todo', 'medium'),
-  ('Write documentation', 'Document API endpoints and usage', 'todo', 'low');
+  ('Write documentation', 'Document API endpoints and usage', 'todo', 'low')
+) AS sample_data
+WHERE NOT EXISTS (SELECT 1 FROM tasks);
 
 -- Log success
 DO $$

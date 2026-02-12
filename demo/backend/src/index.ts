@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { ApiResponse } from './types';
 import taskRoutes from './routes/task.routes';
+import authRoutes from './routes/auth.routes';
 
 // Load environment variables
 dotenv.config();
@@ -33,6 +34,9 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // API Routes
+console.log('[Server] Registering authentication routes at /api/auth');
+app.use('/api/auth', authRoutes);
+
 console.log('[Server] Registering task routes at /api/tasks');
 app.use('/api/tasks', taskRoutes);
 
