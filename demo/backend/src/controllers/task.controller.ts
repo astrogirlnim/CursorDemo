@@ -20,6 +20,7 @@ import {
   createPaginatedResponse,
   logPaginationQuery,
 } from '../utils';
+import { emitTaskCreated, emitTaskUpdated, emitTaskDeleted } from '../config/socket';
 
 /**
  * Task Controller - handles HTTP requests for task operations
@@ -182,6 +183,11 @@ export class TaskController {
       const newTask = await TaskModel.create(taskData);
       
       console.log(`[TaskController] Successfully created task ${newTask.id}`);
+      
+      // Emit Socket.io event for real-time updates
+      console.log(`[TaskController] Emitting real-time task:created event for task ${newTask.id}`);
+      emitTaskCreated(newTask);
+      
       sendSuccess(res, newTask, 'Task created successfully', 201);
     } catch (error) {
       console.error('[TaskController] Error creating task:', error);
@@ -225,6 +231,11 @@ export class TaskController {
       }
       
       console.log(`[TaskController] Successfully updated task ${id}`);
+      
+      // Emit Socket.io event for real-time updates
+      console.log(`[TaskController] Emitting real-time task:updated event for task ${id}`);
+      emitTaskUpdated(updatedTask);
+      
       sendSuccess(res, updatedTask, 'Task updated successfully');
     } catch (error) {
       console.error('[TaskController] Error updating task:', error);
@@ -247,14 +258,29 @@ export class TaskController {
       
       console.log(`[TaskController] DELETE /api/tasks/${id} - Deleting task`);
       
-      const deleted = await TaskModel.delete(id);
+      // Get task before deleting (to get team_id for Socket.io event)
+      console.log(`[TaskController] Fetching task ${id} to get team_id before deletion`);
+      const task = await TaskModel.findById(id);
       
-      if (!deleted) {
+      if (!task) {
         console.log(`[TaskController] Task ${id} not found for deletion`);
         throw new NotFoundError('Task');
       }
       
+      // Delete the task
+      const deleted = await TaskModel.delete(id);
+      
+      if (!deleted) {
+        console.log(`[TaskController] Task ${id} deletion failed`);
+        throw new NotFoundError('Task');
+      }
+      
       console.log(`[TaskController] Successfully deleted task ${id}`);
+      
+      // Emit Socket.io event for real-time updates
+      console.log(`[TaskController] Emitting real-time task:deleted event for task ${id}`);
+      emitTaskDeleted(id, task.team_id ?? null);
+      
       sendSuccess(res, null, 'Task deleted successfully');
     } catch (error) {
       console.error('[TaskController] Error deleting task:', error);

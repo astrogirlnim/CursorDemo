@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { createServer } from 'http';
 import { ApiResponse } from './types';
 import taskRoutes from './routes/task.routes';
 import authRoutes from './routes/auth.routes';
@@ -8,6 +9,7 @@ import teamRoutes from './routes/team.routes';
 import { requestTimeout, performanceMonitor } from './middleware/timeout';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { testConnection, getPoolStats } from './config/database';
+import { initializeSocketIO, getSocketStats } from './config/socket';
 
 // Load environment variables
 dotenv.config();
@@ -43,10 +45,11 @@ app.use(performanceMonitor);
 console.log('[Server] Adding request timeout middleware (30s)');
 app.use(requestTimeout(30000));
 
-// Health check route with database stats
+// Health check route with database and Socket.io stats
 app.get('/health', (req: Request, res: Response) => {
   console.log('[Server] Health check requested');
   const poolStats = getPoolStats();
+  const socketStats = getSocketStats();
   res.json({ 
     success: true, 
     message: 'Server is running',
@@ -55,6 +58,7 @@ app.get('/health', (req: Request, res: Response) => {
       uptime: process.uptime(),
       memory: process.memoryUsage(),
       database: poolStats,
+      websocket: socketStats,
     }
   } as ApiResponse);
 });
@@ -79,17 +83,26 @@ app.use(errorHandler);
 // Get port from environment
 const PORT = process.env.PORT || 3000;
 
+// Create HTTP server (needed for Socket.io)
+console.log('[Server] Creating HTTP server for Express and Socket.io...');
+const httpServer = createServer(app);
+
+// Initialize Socket.io with the HTTP server
+console.log('[Server] Initializing Socket.io real-time communication...');
+initializeSocketIO(httpServer);
+
 // Start server
 try {
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log('='.repeat(50));
     console.log(`[Server] Team Task Manager API started successfully`);
     console.log(`[Server] Port: ${PORT}`);
     console.log(`[Server] Health: http://localhost:${PORT}/health`);
     console.log(`[Server] Tasks API: http://localhost:${PORT}/api/tasks`);
+    console.log(`[Server] Socket.io: Enabled (WebSocket real-time updates)`);
     console.log('='.repeat(50));
   });
 } catch (error) {
-  console.error('Failed to start server:', error);
+  console.error('[Server] Failed to start server:', error);
   process.exit(1);
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Task, TASK_STATUS_CONFIG, TASK_PRIORITY_CONFIG } from '../types/task.types';
 import { TaskService } from '../services/task.service';
 import { useTeam } from '../contexts/TeamContext';
+import { useSocket } from '../contexts/SocketContext';
 
 interface TaskListProps {
   onEdit: (task: Task) => void;
@@ -11,7 +12,7 @@ interface TaskListProps {
 /**
  * TaskList Component
  * Displays all tasks with filtering, status updates, and delete functionality
- * Now filters tasks by current team
+ * Now filters tasks by current team and updates in real-time via Socket.io
  */
 export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -20,11 +21,95 @@ export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const { currentTeam } = useTeam();
+  const { connected, onTaskCreated, onTaskUpdated, onTaskDeleted } = useSocket();
 
   // Fetch tasks on mount and when filters, team, or refreshTrigger change
   useEffect(() => {
     fetchTasks();
   }, [statusFilter, priorityFilter, refreshTrigger, currentTeam]);
+
+  /**
+   * Subscribe to real-time task events via Socket.io
+   * Updates local state when tasks are created/updated/deleted
+   */
+  useEffect(() => {
+    console.log('[TaskList] Setting up real-time Socket.io event listeners...');
+    console.log('[TaskList] Socket connected:', connected);
+    console.log('[TaskList] Current team:', currentTeam?.name);
+
+    if (!connected || !currentTeam) {
+      console.log('[TaskList] Not ready for real-time updates');
+      return;
+    }
+
+    // Subscribe to task:created events
+    const unsubscribeCreated = onTaskCreated((task: Task) => {
+      console.log('[TaskList] Real-time task created:', task);
+      
+      // Only add task if it belongs to current team and matches filters
+      if (task.team_id === currentTeam.id || (currentTeam.id === -1 && !task.team_id)) {
+        const matchesFilters = 
+          (statusFilter === 'all' || task.status === statusFilter) &&
+          (priorityFilter === 'all' || task.priority === priorityFilter);
+        
+        if (matchesFilters) {
+          console.log('[TaskList] Adding new task to list');
+          setTasks(prevTasks => [task, ...prevTasks]);
+        } else {
+          console.log('[TaskList] New task does not match current filters, not adding to list');
+        }
+      } else {
+        console.log('[TaskList] Task belongs to different team, ignoring');
+      }
+    });
+
+    // Subscribe to task:updated events
+    const unsubscribeUpdated = onTaskUpdated((task: Task) => {
+      console.log('[TaskList] Real-time task updated:', task);
+      
+      // Update task if it belongs to current team
+      if (task.team_id === currentTeam.id || (currentTeam.id === -1 && !task.team_id)) {
+        const matchesFilters = 
+          (statusFilter === 'all' || task.status === statusFilter) &&
+          (priorityFilter === 'all' || task.priority === priorityFilter);
+        
+        if (matchesFilters) {
+          console.log('[TaskList] Updating task in list');
+          setTasks(prevTasks => 
+            prevTasks.map(t => t.id === task.id ? task : t)
+          );
+        } else {
+          console.log('[TaskList] Updated task no longer matches filters, removing from list');
+          setTasks(prevTasks => prevTasks.filter(t => t.id !== task.id));
+        }
+      } else {
+        console.log('[TaskList] Task belongs to different team, ignoring');
+      }
+    });
+
+    // Subscribe to task:deleted events
+    const unsubscribeDeleted = onTaskDeleted((data: { id: number; team_id: number }) => {
+      console.log('[TaskList] Real-time task deleted:', data);
+      
+      // Remove task if it belongs to current team
+      if (data.team_id === currentTeam.id || (currentTeam.id === -1 && !data.team_id)) {
+        console.log('[TaskList] Removing task from list');
+        setTasks(prevTasks => prevTasks.filter(t => t.id !== data.id));
+      } else {
+        console.log('[TaskList] Task belongs to different team, ignoring');
+      }
+    });
+
+    console.log('[TaskList] Real-time event listeners registered');
+
+    // Cleanup subscriptions on unmount or when dependencies change
+    return () => {
+      console.log('[TaskList] Cleaning up real-time event listeners');
+      unsubscribeCreated();
+      unsubscribeUpdated();
+      unsubscribeDeleted();
+    };
+  }, [connected, currentTeam, statusFilter, priorityFilter, onTaskCreated, onTaskUpdated, onTaskDeleted]);
 
   /**
    * Fetch tasks from API with current filters and team
@@ -134,6 +219,21 @@ export function TaskList({ onEdit, refreshTrigger }: TaskListProps) {
 
   return (
     <div className="space-y-4">
+      {/* Connection status indicator */}
+      {connected && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2 text-xs text-green-700">
+          <span className="inline-block w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
+          Real-time updates active
+        </div>
+      )}
+      
+      {!connected && currentTeam && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-700">
+          <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+          Connecting to real-time server...
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex gap-4 flex-wrap">
         <div>
